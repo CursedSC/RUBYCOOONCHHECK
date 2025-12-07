@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Компактный миниатюрный хедер без стрелки -->
+<header class="header minecraft-header-compact">
+    <!-- Декоративные элементы Minecraft -->
+    <div class="minecraft-decoration">
+        <div class="pixel-border top"></div>
+        <div class="pixel-border bottom"></div>
+        <div class="pixel-border left"></div>
+        <div class="pixel-border right"></div>
+        
+        <!-- Угловые блоки -->
+        <div class="corner-block top-left"></div>
+        <div class="corner-block top-right"></div>
+        <div class="corner-block bottom-left"></div>
+        <div class="corner-block bottom-right"></div>
+    </div>
+
+    <!-- Анимированные пиксельные частицы -->
+    <div class="pixel-particles-compact">
+        <div class="pixel-particle-small"></div>
+        <div class="pixel-particle-small"></div>
+        <div class="pixel-particle-small"></div>
+        <div class="pixel-particle-small"></div>
+    </div>
+
+    <!-- Компактный логотип -->
+    <div class="logo-compact">
+        <div class="logo-frame">
+            <img src="{{ url_for('static', filename='images/Rubycon.png') }}" alt="RubyCon Logo" class="logo-img-compact">
+        </div>
+    </div>
+
+    <!-- Компактный заголовок -->
+    <div class="title-compact">
+        <h1 class="main-title-compact">
+            <span class="title-line">ПРАВИЛА СЕРВЕРА</span>
+            <span class="title-server">RUBYCON</span>
+        </h1>
+    </div>
+
+    <!-- Компактная информация -->
+    <div class="info-compact">
+        <div class="info-badge-compact">
+            <i class="fas fa-calendar-alt"></i>
+            <span>Последнее обновление: <strong>21 октября 2025 года</strong></span>
+        </div>
+    </div>
+
+    <!-- Компактная кнопка -->
+    <a href="/terms" class="terms-btn-compact">
+        <i class="fas fa-file-contract"></i>
+        <span>Пользовательское соглашение</span>
+    </a>
+</header>
+
+<!-- Остальной контент без изменений -->
+<section class="rules-section">
+    <div class="section-header">
+        <div class="icon-wrapper">
+            <i class="fas fa-gavel section-icon"></i>
+            <div class="icon-pulse"></div>
+        </div>
+        <h2 class="section-title">{{ rules.general.title }}</h2>
+    </div>
+
+    <div class="rules-list">
+        {% for rule in rules.general.rules %}
+        <div class="rule-item" onclick="togglePunishment(this)">
+            <div class="rule-number">{{ loop.index }}</div>
+            <div class="rule-content">
+                <p class="rule-text">{{ rule.text }}</p>
+                <div class="punishment-info">
+                    <i class="fas fa-exclamation-triangle punishment-icon"></i>
+                    <div>
+                        <div class="punishment-label">Наказание:</div>
+                        <div class="punishment-text">{{ rule.punishment }}</div>
+                    </div>
+                </div>
+            </div>
+            <i class="fas fa-chevron-down rule-arrow"></i>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="rules-section">
+    <div class="section-header">
+        <div class="icon-wrapper">
+            <i class="fas fa-comments section-icon"></i>
+            <div class="icon-pulse"></div>
+        </div>
+        <h2 class="section-title">{{ rules.chat.title }}</h2>
+    </div>
+
+    {% if rules.chat.note %}
+    <div class="section-note">
+        <i class="fas fa-info-circle"></i>
+        <p>{{ rules.chat.note }}</p>
+    </div>
+    {% endif %}
+
+    <div class="rules-list">
+        {% for rule in rules.chat.rules %}
+        <div class="rule-item" onclick="togglePunishment(this)">
+            <div class="rule-number">{{ loop.index }}</div>
+            <div class="rule-content">
+                <p class="rule-text">{{ rule.text }}</p>
+                <div class="punishment-info">
+                    <i class="fas fa-exclamation-triangle punishment-icon"></i>
+                    <div>
+                        <div class="punishment-label">Наказание:</div>
+                        <div class="punishment-text">{{ rule.punishment }}</div>
+                    </div>
+                </div>
+            </div>
+            <i class="fas fa-chevron-down rule-arrow"></i>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="rules-section">
+    <div class="section-header">
+        <div class="icon-wrapper">
+            <i class="fas fa-gamepad section-icon"></i>
+            <div class="icon-pulse"></div>
+        </div>
+        <h2 class="section-title">{{ rules.game.title }}</h2>
+    </div>
+
+    {% if rules.game.note %}
+    <div class="section-note">
+        <i class="fas fa-info-circle"></i>
+        <p>{{ rules.game.note }}</p>
+    </div>
+    {% endif %}
+
+    <div class="rules-list">
+        {% for rule in rules.game.rules %}
+        <div class="rule-item" onclick="togglePunishment(this)">
+            <div class="rule-number">{{ loop.index }}</div>
+            <div class="rule-content">
+                <p class="rule-text">{{ rule.text }}</p>
+                <div class="punishment-info">
+                    <i class="fas fa-exclamation-triangle punishment-icon"></i>
+                    <div>
+                        <div class="punishment-label">Наказание:</div>
+                        <div class="punishment-text">{{ rule.punishment }}</div>
+                    </div>
+                </div>
+            </div>
+            <i class="fas fa-chevron-down rule-arrow"></i>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="discord-end-section">
+    <i class="fab fa-discord discord-end-icon"></i>
+    <h2 class="discord-end-title">Присоединяйтесь к нашему Discord!</h2>
+    <p class="discord-end-text">
+        Общайтесь с игроками, следите за новостями и получайте поддержку
+    </p>
+    <a href="{{ social_links.discord }}" target="_blank" class="discord-end-button">
+        <i class="fab fa-discord"></i>
+        Присоединиться
+    </a>
+</section>
+
+<footer class="footer">
+    <p>&copy; 2025 RubyCon. Все права защищены Сашкой.</p>
+    <p>Minecraft является торговой маркой Mojang AB</p>
+</footer>
+
+{% endblock %}

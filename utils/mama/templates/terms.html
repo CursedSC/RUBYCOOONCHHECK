@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Компактный хедер для Terms -->
+<header class="terms-header-compact">
+    <!-- Декоративные элементы -->
+    <div class="minecraft-decoration">
+        <div class="pixel-border top"></div>
+        <div class="pixel-border bottom"></div>
+        <div class="pixel-border left"></div>
+        <div class="pixel-border right"></div>
+        
+        <div class="corner-block top-left"></div>
+        <div class="corner-block top-right"></div>
+        <div class="corner-block bottom-left"></div>
+        <div class="corner-block bottom-right"></div>
+    </div>
+
+    <!-- Логотип -->
+    <div class="logo-compact">
+        <div class="logo-frame">
+            <img src="{{ url_for('static', filename='images/Rubycon.png') }}" alt="RubyCon Logo" class="logo-img-compact">
+        </div>
+    </div>
+
+    <!-- Заголовок -->
+    <div class="terms-title-container">
+        <h1 class="terms-page-title">ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ</h1>
+        <p class="terms-subtitle">СОГЛАШЕНИЕ От 21 октября 2025 года</p>
+    </div>
+
+    <!-- Кнопка назад -->
+    <a href="/" class="back-link-compact">
+        <i class="fas fa-arrow-left"></i>
+        <span>Назад к правилам</span>
+    </a>
+</header>
+
+<!-- Контейнер контента -->
+<div class="terms-content-wrapper">
+    <!-- Введение -->
+    <section class="terms-intro-section">
+        <div class="intro-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="intro-content">
+            <p>rubycon.ru ("RubyCon" или "Сервис") состоит из игрового сервера Minecraft RubyCon, веб-сайта и всех связанных поддоменов. RubyCon предлагает игровые услуги без каких-либо ограничений.</p>
+            
+            <p>Перед началом использования сервиса RubyCon пользователь обязан ознакомиться с настоящим Пользовательским соглашением, а также со всеми применимыми правилами (включая Правила сервера и Правила общения).</p>
+            
+            <p>RubyCon обеспечивает зарегистрированному пользователю доступ к игровым сервисам Minecraft.</p>
+            
+            <p>Все условия взаимодействия между RubyCon и пользователем разъяснены в данном Соглашении.</p>
+        </div>
+    </section>
+
+    <!-- Секция 1 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">1</div>
+            <h2 class="section-title-terms">Изменение условий</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Администрация RubyCon в любой момент имеет право внести изменения в Пользовательское соглашение. Администрация обязуется оповестить пользователя, разместив обновленный вариант Соглашения на официальном сайте проекта.</p>
+            
+            <p>Все изменения вступают в силу сразу после публикации на сайте.</p>
+            
+            <p>Пользователь имеет право не принимать внесенные изменения - в таком случае администрация ограничивает доступ к серверу. Продолжение использования сервиса означает принятие всех изменений.</p>
+        </div>
+    </section>
+
+    <!-- Секция 2 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">2</div>
+            <h2 class="section-title-terms">Общие положения</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Пользователь обязуется:</p>
+            <ul>
+                <li>Соблюдать все правила и условия, установленные администрацией сервера</li>
+                <li>Не нарушать права других пользователей и администрации</li>
+                <li>Не использовать сервис в противозаконных целях</li>
+                <li>Не распространять вредоносное программное обеспечение</li>
+                <li>Не использовать читы, модификации и эксплойты, дающие преимущество</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Секция 3 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">3</div>
+            <h2 class="section-title-terms">Ответственность</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Администрация сервера <strong>не несет ответственности</strong> за:</p>
+            <ul>
+                <li>Потерю игровых достижений, предметов или прогресса</li>
+                <li>Технические неполадки и временную недоступность сервиса</li>
+                <li>Действия других пользователей</li>
+                <li>Последствия нарушения пользователем правил сервера</li>
+            </ul>
+            
+            <p>Пользователь самостоятельно несет ответственность за сохранность своих данных и соблюдение правил.</p>
+        </div>
+    </section>
+
+    <!-- Секция 4 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">4</div>
+            <h2 class="section-title-terms">Санкции и блокировки</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Администрация имеет право:</p>
+            <ul>
+                <li>Ограничить или заблокировать доступ пользователя при нарушении правил</li>
+                <li>Удалить любой контент, нарушающий правила или законодательство</li>
+                <li>Применять санкции без предварительного уведомления</li>
+                <li>Отказать в разбане по своему усмотрению</li>
+            </ul>
+            
+            <p>Решение администрации является <strong>окончательным</strong> и обжалованию не подлежит.</p>
+        </div>
+    </section>
+
+    <!-- Секция 5 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">5</div>
+            <h2 class="section-title-terms">Конфиденциальность</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Администрация сервера обязуется:</p>
+            <ul>
+                <li>Не передавать личные данные пользователей третьим лицам</li>
+                <li>Использовать данные только в рамках функционирования сервиса</li>
+                <li>Обеспечивать разумную защиту информации пользователей</li>
+            </ul>
+            
+            <p>Пользователь соглашается на сбор и обработку необходимых данных для работы сервиса.</p>
+        </div>
+    </section>
+
+    <!-- Секция 6 -->
+    <section class="terms-section-block">
+        <div class="section-header-terms">
+            <div class="section-number-badge">6</div>
+            <h2 class="section-title-terms">Заключительные положения</h2>
+        </div>
+        <div class="section-content-terms">
+            <p>Данное соглашение регулируется законодательством Российской Федерации.</p>
+            
+            <p>Все споры и разногласия решаются путем переговоров. При невозможности достижения согласия спор передается в компетентный суд.</p>
+            
+            <p>Используя сервис RubyCon, пользователь <strong>подтверждает</strong>, что ознакомился с настоящим соглашением и принимает все его условия.</p>
+        </div>
+    </section>
+</div>
+
+<!-- Футер -->
+<footer class="footer">
+    <p>&copy; 2025 RubyCon. Все права защищены.</p>
+    <p>Minecraft является торговой маркой Mojang AB</p>
+</footer>
+
+{% endblock %}

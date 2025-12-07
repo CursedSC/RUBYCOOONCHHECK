@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RubyCon - Правила сервера Minecraft</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/Rubycon.png') }}">
+
+</head>
+<body>
+    <!-- Фоновое изображение -->
+    <div class="background">
+        <img src="{{ url_for('static', filename='images/background.png') }}" alt="Background" class="bg-image">
+    </div>
+
+    <!-- Анимированные частицы -->
+    <div class="particles-container">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Кнопка техподдержки Discord -->
+    <div class="support-button" onclick="openSupport()">
+        <div class="support-tooltip">Техподдержка</div>
+        <i class="fab fa-discord"></i>
+    </div>
+
+    <!-- Приветственный звук -->
+    <audio id="welcomeSound" src="{{ url_for('static', filename='images/1423335048513585316.ogg') }}"></audio>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
