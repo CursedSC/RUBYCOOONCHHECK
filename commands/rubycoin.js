@@ -1,11 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const Database = require('../database');
+const RubyCoinLogger = require('../database-rubycoin-logs');
 const db = new Database();
 
-// ID канала для логирования выдачи коинов
 const LOG_CHANNEL_ID = '1381454654440865934';
 
-// Функция для отправки логов в канал
 async function sendLogToChannel(client, logData) {
     try {
         const logChannel = client.channels.cache.get(LOG_CHANNEL_ID);
@@ -26,7 +25,7 @@ async function sendLogToChannel(client, logData) {
                 },
                 {
                     name: '📊 Баланс:',
-                    value: `**Новый баланс:** ${logData.newBalance} RubyCoin`,
+                    value: `**Было:** ${logData.previousBalance} RubyCoin\n**Стало:** ${logData.newBalance} RubyCoin`,
                     inline: true
                 },
                 {
@@ -78,7 +77,6 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'выдать') {
-            // Проверка роли для выдачи
             const requiredRoleId = '1387823915631378504';
             if (!interaction.member.roles.cache.has(requiredRoleId)) {
                 return await interaction.reply({
@@ -91,7 +89,6 @@ module.exports = {
             const amountInput = interaction.options.getString('количество');
 
             try {
-                // Парсинг одного числа (может быть отрицательным)
                 const amount = this.parseAmount(amountInput);
                 if (amount === null) {
                     return await interaction.reply({
@@ -100,15 +97,24 @@ module.exports = {
                     });
                 }
 
-                // Получаем текущий баланс до операции
                 const previousBalance = await db.getUserRubyCoins(targetUser.id);
-
-
-
                 await db.addRubyCoins(targetUser.id, amount);
                 const newBalance = await db.getUserRubyCoins(targetUser.id);
 
-                // Создаем описание операции
+                const logger = new RubyCoinLogger(db.db);
+                await logger.logTransaction({
+                    userId: targetUser.id,
+                    adminId: interaction.user.id,
+                    actionType: amount >= 0 ? 'admin_add' : 'admin_remove',
+                    amount: amount,
+                    balanceBefore: previousBalance,
+                    balanceAfter: newBalance,
+                    category: 'admin_operation',
+                    description: `${amount >= 0 ? 'Выдано' : 'Снято'} администратором ${interaction.user.username}`,
+                    guildId: interaction.guildId,
+                    channelId: interaction.channelId
+                });
+
                 const operationType = amount >= 0 ? 'выданы' : 'списаны';
                 const amountDetails = `💎 ${this.formatDecimal(Math.abs(amount))}`;
 
@@ -126,11 +132,11 @@ module.exports = {
 
                 await interaction.reply({ embeds: [embed] });
 
-                // Отправляем лог в канал
                 await sendLogToChannel(interaction.client, {
                     moderatorId: interaction.user.id,
                     targetUserId: targetUser.id,
                     amountDetails: amountDetails,
+                    previousBalance: this.formatDecimal(previousBalance),
                     newBalance: this.formatDecimal(newBalance),
                     channelId: interaction.channelId,
                     timestamp: Date.now()
@@ -145,7 +151,6 @@ module.exports = {
             }
 
         } else if (subcommand === 'баланс') {
-            // ИЗМЕНЕНО: Теперь любой может проверить баланс
             const targetUser = interaction.options.getUser('пользователь') || interaction.user;
 
             try {
@@ -158,8 +163,6 @@ module.exports = {
                     .setThumbnail(targetUser.displayAvatarURL())
                     .setTimestamp();
 
-                // Если пользователь проверяет свой баланс, показываем приватно
-                // Если проверяет чужой - показываем публично
                 const isOwnBalance = targetUser.id === interaction.user.id;
                 
                 await interaction.reply({ 
@@ -209,13 +212,10 @@ module.exports = {
         }
     },
 
-    // Функция для парсинга одного числа (может быть отрицательным)
     parseAmount(input) {
         try {
-            // Убираем лишние пробелы
             const cleanInput = input.trim();
             
-            // Проверяем, что строка содержит только цифры, точку и возможный минус в начале
             if (!/^-?\d+(\.\d{1,2})?$/.test(cleanInput)) {
                 return null;
             }
@@ -231,9 +231,7 @@ module.exports = {
         }
     },
 
-    // Функция для форматирования десятичных чисел
     formatDecimal(number) {
-        // Округляем до 2 знаков после запятой и убираем лишние нули
         return parseFloat(number.toFixed(2)).toLocaleString('ru-RU', {
             minimumFractionDigits: 0,
             maximumFractionDigits: 2
