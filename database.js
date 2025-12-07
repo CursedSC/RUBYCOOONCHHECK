@@ -50,7 +50,6 @@ getAverageStatsForConsole(minTotalStats = 10000) {
 }
 
 
-// ==================== МЕТОДЫ ДЛЯ СИСТЕМЫ ДОБРОТЫ ====================
   initEconomyTables() {
     const createConfigTable = `
       CREATE TABLE IF NOT EXISTS economyconfig (
@@ -90,7 +89,7 @@ getAverageStatsForConsole(minTotalStats = 10000) {
         guildid TEXT NOT NULL,
         description TEXT NOT NULL,
         amount_peso INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending', -- pending/approved/rejected/failed
+        status TEXT NOT NULL DEFAULT 'pending',
         adminid TEXT,
         admincomment TEXT,
         messageid TEXT,
@@ -122,7 +121,6 @@ getAverageStatsForConsole(minTotalStats = 10000) {
       this.db.get(query, [guildId], (err, row) => {
         if (err) return reject(err);
         if (!row) {
-          // дефолтная конфигурация без записи
           return resolve({
             guildid: guildId,
             baseunit: 'peso',
@@ -239,7 +237,6 @@ getAverageStatsForConsole(minTotalStats = 10000) {
         [amountPeso, amountPeso, userId, guildId, amountPeso],
         function (err) {
           if (err) return reject(err);
-          // если 0 — не хватило денег
           resolve(this.changes);
         }
       );
@@ -250,9 +247,7 @@ getAverageStatsForConsole(minTotalStats = 10000) {
 
 
 
-// ==================== ЭКОНОМИЧЕСКАЯ СИСТЕМА ====================
 initEconomySystem() {
-    // Таблица балансов пользователей
     const createEconomyBalance = `
     CREATE TABLE IF NOT EXISTS economy_balance (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,7 +261,6 @@ initEconomySystem() {
         UNIQUE(user_id, guild_id)
     )`;
 
-    // Таблица товаров магазина
     const createShopItems = `
     CREATE TABLE IF NOT EXISTS shop_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -282,7 +276,6 @@ initEconomySystem() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`;
 
-    // Таблица предложений покупки
     const createPurchaseProposals = `
     CREATE TABLE IF NOT EXISTS purchase_proposals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -299,7 +292,6 @@ initEconomySystem() {
         processed_at DATETIME
     )`;
 
-    // Таблица истории транзакций
     const createTransactions = `
     CREATE TABLE IF NOT EXISTS economy_transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -335,7 +327,6 @@ initEconomySystem() {
     });
 }
 
-// === РАБОТА С БАЛАНСАМИ ===
 getBalance(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM economy_balance WHERE user_id = ? AND guild_id = ?';
@@ -349,7 +340,6 @@ getBalance(userId, guildId) {
 updateBalance(userId, guildId, pounds, sols, pessos, description = null, adminId = null) {
     return new Promise((resolve, reject) => {
         this.db.serialize(() => {
-            // Создаем баланс если не существует
             const insertQuery = `
                 INSERT INTO economy_balance (user_id, guild_id, pounds, sols, pessos)
                 VALUES (?, ?, 0, 0, 0)
@@ -357,7 +347,6 @@ updateBalance(userId, guildId, pounds, sols, pessos, description = null, adminId
             `;
             this.db.run(insertQuery, [userId, guildId]);
 
-            // Обновляем баланс
             const updateQuery = `
                 UPDATE economy_balance 
                 SET pounds = pounds + ?,
@@ -370,7 +359,6 @@ updateBalance(userId, guildId, pounds, sols, pessos, description = null, adminId
                 if (err) {
                     reject(err);
                 } else {
-                    // Логируем транзакцию
                     const logQuery = `
                         INSERT INTO economy_transactions 
                         (user_id, guild_id, transaction_type, pounds_change, sols_change, pessos_change, description, admin_id)
@@ -387,7 +375,6 @@ updateBalance(userId, guildId, pounds, sols, pessos, description = null, adminId
     });
 }
 
-// === МАГАЗИН ===
 getAllShopItems() {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM shop_items WHERE enabled = 1 ORDER BY category, item_name';
@@ -435,7 +422,6 @@ purchaseItem(userId, guildId, itemId, quantity) {
         this.db.serialize(() => {
             this.db.run('BEGIN TRANSACTION');
 
-            // Получаем товар
             const itemQuery = 'SELECT * FROM shop_items WHERE id = ? AND enabled = 1';
             this.db.get(itemQuery, [itemId], (err, item) => {
                 if (err || !item) {
@@ -443,13 +429,11 @@ purchaseItem(userId, guildId, itemId, quantity) {
                     return reject(err || new Error('Товар не найден'));
                 }
 
-                // Проверяем запас
                 if (item.stock !== -1 && item.stock < quantity) {
                     this.db.run('ROLLBACK');
                     return reject(new Error('Недостаточно товара на складе'));
                 }
 
-                // Получаем баланс
                 const balanceQuery = 'SELECT * FROM economy_balance WHERE user_id = ? AND guild_id = ?';
                 this.db.get(balanceQuery, [userId, guildId], (err, balance) => {
                     if (err) {
@@ -461,12 +445,10 @@ purchaseItem(userId, guildId, itemId, quantity) {
                     const userSols = balance?.sols || 0;
                     const userPessos = balance?.pessos || 0;
 
-                    // Рассчитываем стоимость
                     const totalPounds = item.price_pounds * quantity;
                     const totalSols = item.price_sols * quantity;
                     const totalPessos = item.price_pessos * quantity;
 
-                    // Конвертируем в общую валюту (в пессо)
                     const userTotalPessos = userPounds * 100 + userSols * 5 + userPessos;
                     const itemTotalPessos = totalPounds * 100 + totalSols * 5 + totalPessos;
 
@@ -475,7 +457,6 @@ purchaseItem(userId, guildId, itemId, quantity) {
                         return reject(new Error('Недостаточно средств'));
                     }
 
-                    // Списываем деньги
                     const updateBalanceQuery = `
                         UPDATE economy_balance
                         SET pounds = pounds - ?,
@@ -486,13 +467,11 @@ purchaseItem(userId, guildId, itemId, quantity) {
                     `;
                     this.db.run(updateBalanceQuery, [totalPounds, totalSols, totalPessos, userId, guildId]);
 
-                    // Уменьшаем запас
                     if (item.stock !== -1) {
                         const updateStockQuery = 'UPDATE shop_items SET stock = stock - ? WHERE id = ?';
                         this.db.run(updateStockQuery, [quantity, itemId]);
                     }
 
-                    // Логируем покупку
                     const logQuery = `
                         INSERT INTO economy_transactions 
                         (user_id, guild_id, transaction_type, pounds_change, sols_change, pessos_change, description)
@@ -514,7 +493,6 @@ purchaseItem(userId, guildId, itemId, quantity) {
     });
 }
 
-// === ПРЕДЛОЖЕНИЯ ПОКУПКИ ===
 createPurchaseProposal(userId, guildId, description, offerPounds, offerSols, offerPessos) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -548,7 +526,6 @@ processProposal(proposalId, adminId, approved, comment = null) {
         this.db.serialize(() => {
             this.db.run('BEGIN TRANSACTION');
 
-            // Получаем предложение
             const getQuery = 'SELECT * FROM purchase_proposals WHERE id = ? AND status = \'pending\'';
             this.db.get(getQuery, [proposalId], (err, proposal) => {
                 if (err || !proposal) {
@@ -557,7 +534,6 @@ processProposal(proposalId, adminId, approved, comment = null) {
                 }
 
                 if (approved) {
-                    // Списываем деньги
                     const updateBalanceQuery = `
                         UPDATE economy_balance
                         SET pounds = pounds - ?,
@@ -574,7 +550,6 @@ processProposal(proposalId, adminId, approved, comment = null) {
                         proposal.guild_id
                     ]);
 
-                    // Логируем транзакцию
                     const logQuery = `
                         INSERT INTO economy_transactions 
                         (user_id, guild_id, transaction_type, pounds_change, sols_change, pessos_change, description, admin_id)
@@ -588,7 +563,6 @@ processProposal(proposalId, adminId, approved, comment = null) {
                     ]);
                 }
 
-                // Обновляем статус предложения
                 const updateQuery = `
                     UPDATE purchase_proposals
                     SET status = ?,
@@ -707,7 +681,7 @@ deleteKindnessCardsBySender(senderId) {
             if (err) {
                 reject(err);
             } else {
-                resolve(this.changes); // Возвращает количество удалённых записей
+                resolve(this.changes);
             }
         });
     });
@@ -755,9 +729,6 @@ canSendKindnessCard(userId) {
 
 
 
-// === СИСТЕМА НАКАЗАНИЙ ===
-
-// Инициализация таблицы
 initPunishmentSystem() {
     const createPunishmentsTable = `
         CREATE TABLE IF NOT EXISTS punishments (
@@ -780,7 +751,6 @@ initPunishmentSystem() {
     });
 }
 
-// Добавить наказание
 addPunishment(data) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -805,7 +775,6 @@ addPunishment(data) {
     });
 }
 
-// Получить активные наказания пользователя
 getActivePunishments(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -821,7 +790,6 @@ getActivePunishments(userId, guildId) {
     });
 }
 
-// Снять наказание
 removePunishment(punishmentId) {
     return new Promise((resolve, reject) => {
         const query = `UPDATE punishments SET removed = 1 WHERE id = ?`;
@@ -833,7 +801,6 @@ removePunishment(punishmentId) {
     });
 }
 
-// Получить истёкшие наказания
 getExpiredPunishments() {
     return new Promise((resolve, reject) => {
         const query = `
@@ -876,7 +843,6 @@ initCustomProfileStyling() {
     });
 }
 
-// Получить кастомное оформление для персонажа
 getCustomStyling(characterId) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM customprofilestyling WHERE characterid = ?';
@@ -887,7 +853,6 @@ getCustomStyling(characterId) {
     });
 }
 
-// Создать или обновить кастомное оформление
 setCustomStyling(characterId, stylingData) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -912,7 +877,6 @@ setCustomStyling(characterId, stylingData) {
             stylingData.separatorheight || 60,
             stylingData.enablerecolor !== undefined ? (stylingData.enablerecolor ? 1 : 0) : 1,
             stylingData.enablealternate !== undefined ? (stylingData.enablealternate ? 1 : 0) : 1,
-            // для ON CONFLICT UPDATE
             stylingData.separator1url,
             stylingData.separator1url,
             stylingData.separator2url,
@@ -928,7 +892,6 @@ setCustomStyling(characterId, stylingData) {
     });
 }
 
-// Удалить кастомное оформление
 deleteCustomStyling(characterId) {
     return new Promise((resolve, reject) => {
         const query = 'DELETE FROM customprofilestyling WHERE characterid = ?';
@@ -939,7 +902,6 @@ deleteCustomStyling(characterId) {
     });
 }
 
-// Получить все персонажи с кастомным оформлением
 getAllCustomStyledCharacters() {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM customprofilestyling ORDER BY updatedat DESC';
@@ -968,7 +930,6 @@ initCharacterGalleryTable() {
   }
   
   addGalleryImages(characterId, items) {
-    // items: [{url, caption, sort_order?}]
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         this.db.run('BEGIN');
@@ -1027,7 +988,6 @@ initCharacterGalleryTable() {
   
 
   
-// Проверка является ли пользователь "старым" (имеет активность на сервере)
 isExistingUser(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1040,7 +1000,6 @@ isExistingUser(userId, guildId) {
             if (err) {
                 reject(err);
             } else {
-                // Если у пользователя есть хотя бы 5 сообщений, считаем его "старым"
                 const totalMessages = row ? (row.total_messages || 0) : 0;
                 resolve(totalMessages >= 5);
             }
@@ -1048,9 +1007,7 @@ isExistingUser(userId, guildId) {
     });
 }
 
-// Инициализация таблицы отслеживания приглашений
 initInviteTrackTable() {
-    // Таблица для отслеживания использованных приглашений
     const createInviteTrackTableQuery = `
         CREATE TABLE IF NOT EXISTS invite_tracking (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1076,7 +1033,6 @@ initInviteTrackTable() {
         }
     });
 
-    // Таблица для хранения снимков приглашений
     const createInviteSnapshotsTableQuery = `
         CREATE TABLE IF NOT EXISTS invite_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1099,7 +1055,6 @@ initInviteTrackTable() {
         }
     });
 }
-// Проверка является ли пользователь "старым" (имеет активность на сервере)
 isExistingUser(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1112,7 +1067,6 @@ isExistingUser(userId, guildId) {
             if (err) {
                 reject(err);
             } else {
-                // Если у пользователя есть хотя бы 5 сообщений, считаем его "старым"
                 const totalMessages = row ? (row.total_messages || 0) : 0;
                 resolve(totalMessages >= 5);
             }
@@ -1120,7 +1074,6 @@ isExistingUser(userId, guildId) {
     });
 }
 
-// Отметка пользователя как потенциально фейкового (вернувшийся пользователь)
 markUserAsReturning(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1139,7 +1092,6 @@ markUserAsReturning(userId, guildId) {
     });
 }
 
-// Получение всей активности пользователя (включая прошлые недели)
 getUserTotalMessages(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1157,7 +1109,6 @@ getUserTotalMessages(userId, guildId) {
         });
     });
 }
-// Сохранение снимка приглашений
 saveInviteSnapshot(guildId, invites) {
     return new Promise((resolve, reject) => {
         this.db.serialize(() => {
@@ -1207,7 +1158,6 @@ saveInviteSnapshot(guildId, invites) {
     });
 }
 
-// Получение снимков приглашений
 getInviteSnapshots(guildId) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM invite_snapshots WHERE guild_id = ?';
@@ -1221,12 +1171,11 @@ getInviteSnapshots(guildId) {
     });
 }
 
-// Добавление записи о присоединении
 addInviteTrack(data) {
     return new Promise((resolve, reject) => {
         const accountAgeMs = Date.now() - new Date(data.accountCreatedAt).getTime();
         const accountAgeDays = Math.floor(accountAgeMs / (1000 * 60 * 60 * 24));
-        const isFake = accountAgeDays < 7; // Считаем фейком если аккаунт младше 7 дней
+        const isFake = accountAgeDays < 7;
         
         const query = `
             INSERT INTO invitetrack (user_id, guild_id, inviter_id, invite_code, account_age_days, is_fake)
@@ -1254,7 +1203,6 @@ addInviteTrack(data) {
     });
 }
 
-// Отметить пользователя как покинувшего сервер
 markUserLeft(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1273,7 +1221,6 @@ markUserLeft(userId, guildId) {
     });
 }
 
-// Отметить пользователя как прошедшего верификацию (после 10 минут)
 markUserVerified(userId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1292,7 +1239,6 @@ markUserVerified(userId, guildId) {
     });
 }
 
-// Получение статистики приглашений пользователя
 getUserInviteStats(inviterId, guildId) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1320,7 +1266,6 @@ getUserInviteStats(inviterId, guildId) {
     });
 }
 
-// Получение топа по приглашениям
 getInviteLeaderboard(guildId, limit = 10) {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1348,7 +1293,6 @@ getInviteLeaderboard(guildId, limit = 10) {
     });
 }
 
-// Получение пользователей для проверки верификации
 getUsersForVerification() {
     return new Promise((resolve, reject) => {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -1393,7 +1337,6 @@ initProfilesTable() {
     });
 }
 
-// Создание профиля
 createProfile(userId, keyword, name, avatar, color = '#FFD700') {
     return new Promise((resolve, reject) => {
         const query = `
@@ -1411,7 +1354,6 @@ createProfile(userId, keyword, name, avatar, color = '#FFD700') {
     });
 }
 
-// Получение профиля по ключевому слову
 getProfileByKeyword(userId, keyword) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM user_profiles WHERE user_id = ? AND keyword = ?';
@@ -1425,7 +1367,6 @@ getProfileByKeyword(userId, keyword) {
     });
 }
 
-// Получение всех профилей пользователя
 getUserProfiles(userId) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT * FROM user_profiles WHERE user_id = ? ORDER BY created_at DESC';
@@ -1439,7 +1380,6 @@ getUserProfiles(userId) {
     });
 }
 
-// Удаление профиля
 deleteProfile(userId, keyword) {
     return new Promise((resolve, reject) => {
         const query = 'DELETE FROM user_profiles WHERE user_id = ? AND keyword = ?';
@@ -1453,7 +1393,6 @@ deleteProfile(userId, keyword) {
     });
 }
 
-// Подсчет профилей пользователя
 getUserProfileCount(userId) {
     return new Promise((resolve, reject) => {
         const query = 'SELECT COUNT(*) as count FROM user_profiles WHERE user_id = ?';
@@ -1467,7 +1406,6 @@ getUserProfileCount(userId) {
     });
 }
 
-// Обновление профиля
 updateProfile(userId, keyword, updateData) {
     return new Promise((resolve, reject) => {
         const updates = [];
@@ -1559,7 +1497,6 @@ updateProfile(userId, keyword, updateData) {
             }
         });
 
-        // Добавляем колонку icon_url если её нет
         const addIconColumnQuery = `
             ALTER TABLE characters ADD COLUMN icon_url TEXT DEFAULT NULL
         `;
@@ -1569,7 +1506,6 @@ updateProfile(userId, keyword, updateData) {
             }
         });
 
-        // Создание таблицы слотов пользователей
         const createSlotsTableQuery = `
             CREATE TABLE IF NOT EXISTS user_slots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1590,7 +1526,6 @@ updateProfile(userId, keyword, updateData) {
         });
 
 
-        // Создание таблицы коинов
         const createCoinsTableQuery = `
             CREATE TABLE IF NOT EXISTS user_coins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1608,7 +1543,6 @@ updateProfile(userId, keyword, updateData) {
             }
         });
 
-        // Создание таблицы товаров магазина
         const createShopItemsTableQuery = `
             CREATE TABLE IF NOT EXISTS shop_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1630,7 +1564,6 @@ updateProfile(userId, keyword, updateData) {
             }
         });
 
-        // Создание таблицы покупок
         const createPurchasesTableQuery = `
             CREATE TABLE IF NOT EXISTS purchases (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1651,19 +1584,16 @@ updateProfile(userId, keyword, updateData) {
     }
 
 
-// Метод для добавления новых столбцов Хаки
 async addHakiColumns() {
     return new Promise((resolve, reject) => {
         console.log('🔄 Добавление новых столбцов Хаки...');
         
-        // Массив новых столбцов для добавления
         const newColumns = [
             { name: 'hakinab', type: 'TEXT', default: 'NULL' },
             { name: 'hakiconq', type: 'TEXT', default: 'NULL' },
             { name: 'hakivor', type: 'TEXT', default: 'NULL' }
         ];
 
-        // Сначала проверяем существующие столбцы
         this.db.all("PRAGMA table_info(characters)", [], (err, columns) => {
             if (err) {
                 console.error('❌ Ошибка получения информации о столбцах:', err);
@@ -1674,7 +1604,6 @@ async addHakiColumns() {
             const existingColumns = columns.map(col => col.name);
             console.log('📋 Существующие столбцы:', existingColumns);
 
-            // Добавляем только те столбцы, которых еще нет
             const columnsToAdd = newColumns.filter(col => !existingColumns.includes(col.name));
             
             if (columnsToAdd.length === 0) {
@@ -1685,7 +1614,6 @@ async addHakiColumns() {
 
             console.log(`📝 Добавляем ${columnsToAdd.length} новых столбцов:`, columnsToAdd.map(col => col.name));
 
-            // Добавляем столбцы последовательно
             let addedCount = 0;
             const addNextColumn = () => {
                 if (addedCount >= columnsToAdd.length) {
@@ -1708,11 +1636,10 @@ async addHakiColumns() {
                     
                     console.log(`✅ Столбец ${column.name} добавлен успешно`);
                     addedCount++;
-                    addNextColumn(); // Добавляем следующий столбец
+                    addNextColumn();
                 });
             };
 
-            // Начинаем добавление столбцов
             addNextColumn();
         });
     });
@@ -1728,10 +1655,8 @@ updateCharacterAttributes(characterId, attributes) {
         const updates = [];
         const values = [];
 
-        // Числовые поля (добавляются к текущим значениям)
         const numericFields = ['strength', 'agility', 'reaction', 'accuracy', 'endurance', 'durability', 'magic', 'budget'];
         
-        // Текстовые поля (заменяются)
         const textFields = ['name', 'race', 'age', 'nickname', 'organization', 'position', 'mention', 
                            'hakivor', 'hakinab', 'hakiconq', 'devilfruit', 'martialarts', 'patronage', 
                            'core', 'elements', 'additional'];
@@ -1767,12 +1692,10 @@ updateCharacterAttributes(characterId, attributes) {
 async changeColumnTypes() {
     return new Promise((resolve, reject) => {
         this.db.serialize(() => {
-            // Отключаем проверку внешних ключей
             this.db.run("PRAGMA foreign_keys=off");
             
             this.db.run("BEGIN TRANSACTION");
             
-            // Переименовываем старую таблицу
             this.db.run("ALTER TABLE characters RENAME TO characters_old", (err) => {
                 if (err) {
                     console.error('Ошибка переименования таблицы:', err);
@@ -1781,7 +1704,6 @@ async changeColumnTypes() {
                     return;
                 }
                 
-                // Создаем новую таблицу с измененными типами колонок
                 const createNewTableQuery = `
                     CREATE TABLE characters (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1826,7 +1748,6 @@ async changeColumnTypes() {
                         return;
                     }
                     
-                    // Копируем данные из старой таблицы в новую с преобразованием типов
                     const copyDataQuery = `
                         INSERT INTO characters (
                             id, user_id, name, race, age, nickname, organization, position, mention,
@@ -1855,7 +1776,6 @@ async changeColumnTypes() {
                             return;
                         }
                         
-                        // Удаляем старую таблицу
                         this.db.run("DROP TABLE characters_old", (err) => {
                             if (err) {
                                 console.error('Ошибка удаления старой таблицы:', err);
@@ -1864,13 +1784,11 @@ async changeColumnTypes() {
                                 return;
                             }
                             
-                            // Завершаем транзакцию
                             this.db.run("COMMIT", (err) => {
                                 if (err) {
                                     console.error('Ошибка коммита:', err);
                                     reject(err);
                                 } else {
-                                    // Включаем обратно проверку внешних ключей
                                     this.db.run("PRAGMA foreign_keys=on");
                                     console.log('✅ Типы колонок успешно изменены');
                                     resolve();
@@ -1884,7 +1802,6 @@ async changeColumnTypes() {
     });
 }
 
-    // Инициализация таблицы темп-банов
     initTempBanTable() {
         const createTempBanTableQuery = `
             CREATE TABLE IF NOT EXISTS temp_bans (
@@ -1907,7 +1824,6 @@ async changeColumnTypes() {
         });
     }
 
-    // Инициализация таблицы темп-мутов
     initTempMuteTable() {
         const createTempMuteTableQuery = `
             CREATE TABLE IF NOT EXISTS temp_mutes (
@@ -1930,9 +1846,6 @@ async changeColumnTypes() {
         });
     }
 
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С ТЕМП-БАНАМИ
-    // ===============================
     addTempBan(userId, guildId, banEndTime, reason, moderatorId) {
         return new Promise((resolve, reject) => {
             const query = `
@@ -2010,9 +1923,6 @@ async changeColumnTypes() {
         });
     }
 
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С ТЕМП-МУТАМИ
-    // ===============================
     addTempMute(userId, guildId, muteEndTime, reason, moderatorId) {
         return new Promise((resolve, reject) => {
             const query = `
@@ -2090,9 +2000,6 @@ async changeColumnTypes() {
         });
     }
 
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С ПЕРСОНАЖАМИ
-    // ===============================
     createCharacter(characterData) {
         return new Promise((resolve, reject) => {
             const query = `
@@ -2309,2077 +2216,3 @@ async changeColumnTypes() {
     updateCharacterAbilities(characterId, abilities) {
         return new Promise((resolve, reject) => {
             const query = `
-                UPDATE characters SET
-                    devilfruit = CASE WHEN ? != '' THEN ? ELSE devilfruit END,
-                    patronage = CASE WHEN ? != '' THEN ? ELSE patronage END,
-                    core = CASE WHEN ? != '' THEN ? ELSE core END,
-                    hakiconq = CASE WHEN ? != '' THEN ? ELSE hakiconq END,
-                    hakivor = CASE WHEN ? != '' THEN ? ELSE hakivor END,
-                    hakinab = CASE WHEN ? != '' THEN ? ELSE hakinab END,
-                    elements = CASE WHEN ? != '' THEN ? ELSE elements END
-                WHERE id = ?
-            `;
-            this.db.run(query, [
-                abilities.devilfruit || '', abilities.devilfruit || '',
-                abilities.patronage || '', abilities.patronage || '',
-                abilities.hakivor || '', abilities.hakivor || '',
-                abilities.hakinab || '', abilities.hakinab || '',
-                abilities.hakiconq || '',abilities.hakiconq || '',
-                abilities.core || '',abilities.core || '',
-                abilities.elements || '', abilities.elements || '',
-                characterId
-            ], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    updateCharacterMisc(characterId, miscData) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                UPDATE characters SET
-                    organization = CASE WHEN ? != '' THEN ? ELSE organization END,
-                    position = CASE WHEN ? != '' THEN ? ELSE position END,
-                    budget = budget + ?,
-                    additional = CASE WHEN ? != '' THEN ? ELSE additional END
-                WHERE id = ?
-            `;
-            this.db.run(query, [
-                miscData.organization || '', miscData.organization || '',
-                miscData.position || '', miscData.position || '',
-                miscData.budget || 0,
-                miscData.additional || '', miscData.additional || '',
-                characterId
-            ], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    getAllCharacters() {
-        return new Promise((resolve, reject) => {
-            const query = 'SELECT * FROM characters ORDER BY created_at DESC';
-            this.db.all(query, [], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    getAllCharactersWithStats() {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT
-                    id,
-                    name,
-                    user_id,
-                    race,
-                    strength,
-                    agility,
-                    reaction,
-                    accuracy,
-                    endurance,
-                    durability,
-                    magic,
-                    avatar_url,
-                    icon_url,
-                    (strength + agility + reaction + accuracy + endurance + durability + magic) AS total_stats
-                FROM characters
-                ORDER BY total_stats DESC
-            `;
-            this.db.all(query, [], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    deleteCharacter(characterId) {
-        return new Promise((resolve, reject) => {
-            const query = 'DELETE FROM characters WHERE id = ?';
-            this.db.run(query, [characterId], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ СО СЛОТАМИ
-    // ===============================
-    getUserSlots(userId) {
-        return new Promise((resolve, reject) => {
-            const query = 'SELECT max_slots FROM user_slots WHERE user_id = ?';
-            this.db.get(query, [userId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.max_slots : 3); // По умолчанию 3 слота
-                }
-            });
-        });
-    }
-
-    setUserSlots(userId, maxSlots) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO user_slots (user_id, max_slots)
-                VALUES (?, ?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET max_slots = ?, updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, maxSlots, maxSlots], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    getNextAvailableSlot(userId) {
-        return new Promise((resolve, reject) => {
-            if (!userId) {
-                resolve(1);
-                return;
-            }
-
-            const query = 'SELECT slot FROM characters WHERE user_id = ? ORDER BY slot ASC';
-            this.db.all(query, [userId], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    const usedSlots = rows.map(row => row.slot);
-                    let nextSlot = 1;
-                    while (usedSlots.includes(nextSlot)) {
-                        nextSlot++;
-                    }
-                    resolve(nextSlot);
-                }
-            });
-        });
-    }
-
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С АКТИВНОСТЬЮ
-    // ===============================
-    initUserActivityTable() {
-        // Таблица для хранения активности пользователей
-        const createActivityTableQuery = `
-            CREATE TABLE IF NOT EXISTS user_activity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                guild_id TEXT NOT NULL,
-                messages_count INTEGER DEFAULT 0,
-                voice_time INTEGER DEFAULT 0,
-                week_start DATE NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, guild_id, week_start)
-            )
-        `;
-        this.db.run(createActivityTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы активности:', err);
-            } else {
-                console.log('Таблица активности создана успешно');
-            }
-        });
-
-        // Таблица для отслеживания времени в голосовых каналах
-        const createVoiceSessionsTableQuery = `
-            CREATE TABLE IF NOT EXISTS voice_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                guild_id TEXT NOT NULL,
-                channel_id TEXT NOT NULL,
-                join_time DATETIME NOT NULL,
-                leave_time DATETIME,
-                duration INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-        this.db.run(createVoiceSessionsTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы голосовых сессий:', err);
-            } else {
-                console.log('Таблица голосовых сессий создана успешно');
-            }
-        });
-    }
-
-    getWeekStart() {
-        const now = new Date();
-        const dayOfWeek = now.getDay();
-        const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-        const monday = new Date(now.setDate(diff));
-        monday.setHours(0, 0, 0, 0);
-        return monday.toISOString().split('T')[0];
-    }
-
-    addMessageActivity(userId, guildId) {
-        return new Promise((resolve, reject) => {
-            const weekStart = this.getWeekStart();
-            const query = `
-                INSERT INTO user_activity (user_id, guild_id, messages_count, week_start)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(user_id, guild_id, week_start)
-                DO UPDATE SET
-                    messages_count = messages_count + 1,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, guildId, weekStart], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    addVoiceTime(userId, guildId, seconds) {
-        return new Promise((resolve, reject) => {
-            const weekStart = this.getWeekStart();
-            const query = `
-                INSERT INTO user_activity (user_id, guild_id, voice_time, week_start)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, guild_id, week_start)
-                DO UPDATE SET
-                    voice_time = voice_time + ?,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, guildId, seconds, weekStart, seconds], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-    startVoiceSession(userId, guildId, channelId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO voice_sessions (user_id, guild_id, channel_id, join_time)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            `;
-            this.db.run(query, [userId, guildId, channelId], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.lastID);
-                }
-            });
-        });
-    }
-
-    endVoiceSession(userId, guildId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                UPDATE voice_sessions
-                SET leave_time = CURRENT_TIMESTAMP,
-                    duration = (julianday(CURRENT_TIMESTAMP) - julianday(join_time)) * 86400
-                WHERE user_id = ? AND guild_id = ? AND leave_time IS NULL
-            `;
-            this.db.run(query, [userId, guildId], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    getUserWeekActivity(userId, guildId) {
-        return new Promise((resolve, reject) => {
-            const weekStart = this.getWeekStart();
-            const query = `
-                SELECT messages_count, voice_time
-                FROM user_activity
-                WHERE user_id = ? AND guild_id = ? AND week_start = ?
-            `;
-            this.db.get(query, [userId, guildId, weekStart], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row || { messages_count: 0, voice_time: 0 });
-                }
-            });
-        });
-    }
-
-    getTopUsersThisWeek(guildId, limit = 10) {
-        return new Promise((resolve, reject) => {
-            const weekStart = this.getWeekStart();
-            const query = `
-                SELECT user_id, messages_count, voice_time,
-                    (messages_count + voice_time/60) as total_score
-                FROM user_activity
-                WHERE guild_id = ? AND week_start = ?
-                ORDER BY total_score DESC
-                LIMIT ?
-            `;
-            this.db.all(query, [guildId, weekStart, limit], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    getTopUsersSinceContestStart(guildId, limit = 1000) {
-        return new Promise((resolve, reject) => {
-            // Дата начала конкурса
-            const contestStart = new Date('2025-11-13T12:00:00+03:00'); // МСК
-        
-            // Считаем понедельник той недели, где находится 13.11.2025 (как getWeekStart, но для фиксированной даты)
-            const dayOfWeek = contestStart.getDay(); // 0 = воскресенье, 1 = понедельник, ...
-            const diff = contestStart.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-            const monday = new Date(contestStart.setDate(diff));
-            monday.setHours(0, 0, 0, 0);
-            const contestWeekStart = monday.toISOString().split('T')[0];
-        
-            const query = `
-                SELECT 
-                    user_id,
-                    SUM(messages_count) AS messages_count,
-                    SUM(voice_time) AS voice_time,
-                    (SUM(messages_count) + SUM(voice_time) / 60.0) AS total_score
-                FROM user_activity
-                WHERE guild_id = ? 
-                  AND week_start >= ?
-                GROUP BY user_id
-                ORDER BY total_score DESC
-                LIMIT ?
-            `;
-        
-            this.db.all(query, [guildId, contestWeekStart, limit], (err, rows) => {
-                if (err) {
-                    console.error('Ошибка getTopUsersSinceContestStart:', err);
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-    
-    getTopCharactersByStats(limit = 10) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT
-                    id,
-                    name,
-                    user_id,
-                    (strength + agility + reaction + accuracy + endurance + durability + magic) AS total_stats
-                FROM characters
-                ORDER BY total_stats DESC
-                LIMIT ?
-            `;
-            this.db.all(query, [limit], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    getCharacterRankByStats(characterId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                WITH ranked_characters AS (
-                    SELECT
-                        id,
-                        ROW_NUMBER() OVER (ORDER BY (strength + agility + reaction + accuracy + endurance + durability + magic) DESC) as rank
-                    FROM characters
-                )
-                SELECT rank FROM ranked_characters WHERE id = ?
-            `;
-            this.db.get(query, [characterId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.rank : null);
-                }
-            });
-        });
-    }
-
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С RUBYCOINS
-    // ===============================
-    initRubyCoinTable() {
-        const createRubyCoinTableQuery = `
-            CREATE TABLE IF NOT EXISTS user_rubycoins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL UNIQUE,
-                rubycoins REAL DEFAULT 0.0,
-                total_earned REAL DEFAULT 0.0,
-                total_spent REAL DEFAULT 0.0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-        this.db.run(createRubyCoinTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы RubyCoin:', err);
-            } else {
-                console.log('Таблица RubyCoin создана успешно');
-            }
-        });
-    }
-
-    getUserRubyCoins(userId) {
-        return new Promise((resolve, reject) => {
-            const query = 'SELECT rubycoins FROM user_rubycoins WHERE user_id = ?';
-            this.db.get(query, [userId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.rubycoins : 0);
-                }
-            });
-        });
-    }
-
-    addRubyCoins(userId, amount) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO user_rubycoins (user_id, rubycoins, total_earned)
-                VALUES (?, ?, ?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET
-                    rubycoins = rubycoins + ?,
-                    total_earned = total_earned + ?,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, amount, amount, amount, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    removeRubyCoins(userId, amount) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                UPDATE user_rubycoins
-                SET rubycoins = rubycoins - ?,
-                    total_spent = total_spent + ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ? AND rubycoins >= ?
-            `;
-            this.db.run(query, [amount, amount, userId, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    setRubyCoins(userId, amount) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO user_rubycoins (user_id, rubycoins)
-                VALUES (?, ?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET
-                    rubycoins = ?,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, amount, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    getRubyCoinLeaderboard(limit = 10) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT user_id, rubycoins, total_earned, total_spent
-                FROM user_rubycoins
-                ORDER BY rubycoins DESC
-                LIMIT ?
-            `;
-            this.db.all(query, [limit], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    // ===============================
-    // МЕТОДЫ ДЛЯ РАБОТЫ С КРУТКАМИ ХАКИ
-    // ===============================
-    initHakiSpinsTable() {
-        const createHakiSpinsTableQuery = `
-            CREATE TABLE IF NOT EXISTS user_haki_spins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL UNIQUE,
-                haki_spins INTEGER DEFAULT 0,
-                total_earned INTEGER DEFAULT 0,
-                total_used INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-        this.db.run(createHakiSpinsTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы круток хаки:', err);
-            } else {
-                console.log('Таблица круток хаки создана успешно');
-            }
-        });
-    }
-
-    initHakiHistoryTable() {
-        const createHakiHistoryTableQuery = `
-            CREATE TABLE IF NOT EXISTS haki_spin_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                haki_result TEXT NOT NULL,
-                spin_count INTEGER NOT NULL,
-                total_spins INTEGER NOT NULL,
-                session_id TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-        this.db.run(createHakiHistoryTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы истории хаки:', err);
-            } else {
-                console.log('Таблица истории хаки создана успешно');
-            }
-        });
-    }
-
-    getUserHakiSpins(userId) {
-        return new Promise((resolve, reject) => {
-            const query = 'SELECT haki_spins FROM user_haki_spins WHERE user_id = ?';
-            this.db.get(query, [userId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.haki_spins : 0);
-                }
-            });
-        });
-    }
-
-    addHakiSpins(userId, amount) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO user_haki_spins (user_id, haki_spins, total_earned)
-                VALUES (?, ?, ?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET
-                    haki_spins = haki_spins + ?,
-                    total_earned = total_earned + ?,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, amount, amount, amount, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    removeHakiSpins(userId, amount) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                UPDATE user_haki_spins
-                SET haki_spins = haki_spins - ?,
-                    total_used = total_used + ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ? AND haki_spins >= ?
-            `;
-            this.db.run(query, [amount, amount, userId, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-
-    saveHakiSpinResult(userId, hakiResult, spinCount, totalSpins, sessionId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO haki_spin_history (user_id, haki_result, spin_count, total_spins, session_id)
-                VALUES (?, ?, ?, ?, ?)
-            `;
-            this.db.run(query, [userId, hakiResult, spinCount, totalSpins, sessionId], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.lastID);
-                }
-            });
-        });
-    }
-
-    getUserHakiHistory(userId, limit = 50, offset = 0) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT session_id, COUNT(*) as total_spins,
-                    GROUP_CONCAT(haki_result) as results,
-                    MIN(created_at) as session_start
-                FROM haki_spin_history
-                WHERE user_id = ?
-                GROUP BY session_id
-                ORDER BY session_start DESC
-                LIMIT ? OFFSET ?
-            `;
-            this.db.all(query, [userId, limit, offset], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    getUserHakiHistoryCount(userId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT COUNT(DISTINCT session_id) as total_sessions
-                FROM haki_spin_history
-                WHERE user_id = ?
-            `;
-            this.db.get(query, [userId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.total_sessions : 0);
-                }
-            });
-        });
-    }
-
-    getHakiSessionDetails(userId, sessionId) {
-        return new Promise((resolve, reject) => {
-            const query = `
-                SELECT haki_result, spin_count, created_at
-                FROM haki_spin_history
-                WHERE user_id = ? AND session_id = ?
-                ORDER BY spin_count ASC
-            `;
-            this.db.all(query, [userId, sessionId], (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(rows || []);
-                }
-            });
-        });
-    }
-
-    // Добавляем недостающий метод addHakiHistory
-    addHakiHistory(userId, sessionId, results, totalSpins) {
-        return new Promise(async (resolve, reject) => {
-            try {
-                // Сохраняем каждый результат отдельно
-                for (let i = 0; i < results.length; i++) {
-                    await this.saveHakiSpinResult(userId, results[i], i + 1, totalSpins, sessionId);
-                }
-                resolve(true);
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    async updateCharacterStatsAdvanced(characterId, stats) {
-        return new Promise((resolve, reject) => {
-            console.log(`🔄 Обновление персонажа ${characterId}:`, stats);
-            if (!stats || Object.keys(stats).length === 0) {
-                console.warn('⚠️ Нет данных для обновления');
-                resolve(0);
-                return;
-            }
-    
-            // ИСПРАВЛЕННЫЕ массивы полей
-            const numericAddFields = [
-                'strength', 'agility', 'reaction', 'accuracy',
-                'endurance', 'durability', 'magic', 'budget'
-            ];
-            
-
-            const hakiFields = []; // Оставляем пустым
-            
-            const replaceNumericFields = ['age'];
-            
-            // ДОБАВЛЯЕМ поля хаки в textFields
-            const textFields = [
-                'name', 'race', 'nickname', 'organization', 'position',
-                'devilfruit', 'martialarts', 'patronage', 'core',
-                'elements', 'mention', 'additional', 
-                'hakivor', 'hakinab', 'hakiconq'
-            ];
-    
-            const updates = [];
-            const values = [];
-    
-            for (const [field, value] of Object.entries(stats)) {
-                console.log(`📝 Обработка поля: ${field} = ${value}`);
-                
-                if (numericAddFields.includes(field)) {
-                    // Обычные числовые поля (INTEGER)
-                    const numValue = parseInt(value);
-                    if (!isNaN(numValue) && numValue !== 0) {
-                        updates.push(`${field} = COALESCE(${field}, 0) + ?`);
-                        values.push(numValue);
-                        console.log(`➕ ${field}: добавляем ${numValue}`);
-                    }
-                } else if (replaceNumericFields.includes(field)) {
-                    // Заменяем значение для возраста
-                    const numValue = parseInt(value);
-                    if (!isNaN(numValue) && numValue > 0) {
-                        updates.push(`${field} = ?`);
-                        values.push(numValue.toString());
-                        console.log(`🔄 ${field}: заменяем на ${numValue}`);
-                    }
-                } else if (textFields.includes(field)) {
-                    // Обычные текстовые поля (ВКЛЮЧАЯ ХАКИ)
-                    if (value !== undefined && value !== null) {
-                        const stringValue = value.toString().trim();
-                        if (stringValue !== '') {
-                            updates.push(`${field} = ?`);
-                            values.push(stringValue);
-                            console.log(`📝 ${field}: заменяем на "${stringValue}"`);
-                        } else {
-                            updates.push(`${field} = NULL`);
-                            console.log(`🗑️ ${field}: очищаем (NULL)`);
-                        }
-                    }
-                } else {
-                    console.warn(`⚠️ Неизвестное поле: ${field}`);
-                }
-            }
-    
-            if (updates.length === 0) {
-                console.warn('⚠️ Нет корректных полей для обновления');
-                resolve(0);
-                return;
-            }
-    
-            values.push(characterId);
-            const query = `UPDATE characters SET ${updates.join(', ')} WHERE id = ?`;
-            
-            console.log(`📋 SQL запрос: ${query}`);
-            console.log(`📊 Значения: [${values.join(', ')}]`);
-    
-            this.db.run(query, values, function(err) {
-                if (err) {
-                    console.error('❌ Ошибка базы данных:', err);
-                    reject(new Error(`Ошибка базы данных: ${err.message}`));
-                } else {
-                    console.log(`✅ Обновлено строк: ${this.changes}`);
-                    resolve(this.changes);
-                }
-            });
-        });
-    }
-    
-// Инициализация таблицы тикетов с счетчиком
-// Инициализация таблицы тикетов с счетчиком
-initTicketTable() {
-    const createTicketTableQuery = `
-    CREATE TABLE IF NOT EXISTS tickets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticket_number INTEGER NOT NULL UNIQUE,
-        curator_id TEXT,
-        purpose TEXT NOT NULL,
-        character_ids TEXT NOT NULL,
-        status TEXT DEFAULT 'Ожидает куратора',
-        creator_id TEXT NOT NULL,
-        channel_id TEXT,
-        participants TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        next_ticket_allowed DATETIME DEFAULT NULL
-    )
-    `;
-
-    this.db.run(createTicketTableQuery, (err) => {
-        if (err) {
-            console.error('Ошибка создания таблицы тикетов:', err);
-        } else {
-            console.log('Таблица тикетов создана успешно');
-            
-            // Добавляем новый столбец если его нет
-            this.db.run('ALTER TABLE tickets ADD COLUMN next_ticket_allowed DATETIME DEFAULT NULL', (alterErr) => {
-                if (alterErr && !alterErr.message.includes('duplicate column name')) {
-                    console.error('Ошибка добавления столбца next_ticket_allowed:', alterErr);
-                } else if (!alterErr) {
-                    console.log('Столбец next_ticket_allowed добавлен');
-                }
-            });
-        }
-    });
-
-
-    // Таблица для отзывов о кураторах
-    const createReviewsTableQuery = `
-        CREATE TABLE IF NOT EXISTS curator_reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticket_number INTEGER NOT NULL,
-            curator_id TEXT NOT NULL,
-            reviewer_id TEXT NOT NULL,
-            rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-            comment TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (ticket_number) REFERENCES tickets (ticket_number)
-        )
-    `;
-    
-    this.db.run(createReviewsTableQuery, (err) => {
-        if (err) {
-            console.error('Ошибка создания таблицы отзывов:', err);
-        } else {
-            console.log('Таблица отзывов создана успешно');
-        }
-    });
-    this.db.run(createTicketTableQuery, (err) => {
-        if (err) {
-            console.error('Ошибка создания таблицы тикетов:', err);
-        } else {
-            console.log('Таблица тикетов создана успешно');
-            
-            // Добавляем недостающий столбец participants если его нет
-            this.db.run('ALTER TABLE tickets ADD COLUMN participants TEXT DEFAULT ""', (alterErr) => {
-                if (alterErr && !alterErr.message.includes('duplicate column name')) {
-                    console.error('Ошибка добавления столбца participants:', alterErr);
-                } else if (!alterErr) {
-                    console.log('Столбец participants добавлен');
-                }
-            });
-        }
-    });
-
-    // Таблица для хранения счетчика тикетов
-    const createCounterTableQuery = `
-        CREATE TABLE IF NOT EXISTS ticket_counter (
-            id INTEGER PRIMARY KEY,
-            counter INTEGER DEFAULT 1
-        )
-    `;
-
-    this.db.run(createCounterTableQuery, (err) => {
-        if (err) {
-            console.error('Ошибка создания таблицы счетчика:', err);
-        } else {
-            // Инициализируем счетчик если его нет
-            this.db.run('INSERT OR IGNORE INTO ticket_counter (id, counter) VALUES (1, 200)');
-        }
-    });
-}
-
-
-// Получение следующего номера тикета
-getNextTicketNumber() {
-    return new Promise((resolve, reject) => {
-        this.db.get('SELECT counter FROM ticket_counter WHERE id = 1', (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                const nextNumber = row ? row.counter : 200;
-                // Увеличиваем счетчик
-                this.db.run('UPDATE ticket_counter SET counter = counter + 1 WHERE id = 1', (updateErr) => {
-                    if (updateErr) {
-                        reject(updateErr);
-                    } else {
-                        resolve(nextNumber);
-                    }
-                });
-            }
-        });
-    });
-}
-
-// Убираем установку кулдауна при создании тикета
-createTicket(ticketData) {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO tickets (ticket_number, purpose, character_ids, creator_id, channel_id, participants)
-                       VALUES (?, ?, ?, ?, ?, ?)`;
-        
-        this.db.run(query, [
-            ticketData.ticket_number,
-            ticketData.purpose,
-            ticketData.character_ids,
-            ticketData.creator_id,
-            ticketData.channel_id,
-            ticketData.participants || ''
-        ], function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-        });
-    });
-}
-
-// Проверка активных тикетов (НЕ кулдауна!)
-async hasActiveTicket(userId) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        SELECT COUNT(*) as count 
-        FROM tickets 
-        WHERE creator_id = ? 
-        AND status NOT IN ('Закрыт', 'Завершён')
-      `;
-      this.db.get(query, [userId], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row && row.count > 0);
-        }
-      });
-    });
-}
-
-// Установка кулдауна при закрытии/завершении тикета
-async setTicketClosureCooldown(userId) {
-    return new Promise((resolve, reject) => {
-        const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов
-        
-        const query = `UPDATE tickets 
-                       SET nextticketallowed = ?
-                       WHERE creatorid = ? 
-                       AND status IN ('Закрыт', 'Завершён')
-                       ORDER BY updatedat DESC 
-                       LIMIT 1`;
-        
-        this.db.run(query, [nextAllowed.toISOString(), userId], function(err) {
-            if (err) reject(err);
-            else resolve(this.changes);
-        });
-    });
-}
-
-// Получить кулдаун пользователя (в часах)
-
-// Получить количество часов до окончания кулдауна
-getCooldownHours(userId) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const cooldownEnd = await this.getUserCooldown(userId);
-        if (!cooldownEnd) {
-          resolve(0);
-        } else {
-          const now = new Date();
-          const hoursLeft = Math.ceil((cooldownEnd - now) / (1000 * 60 * 60));
-          resolve(Math.max(0, hoursLeft));
-        }
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-
-// Получение тикета по номеру
-getTicketByNumber(ticketNumber) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE ticket_number = ?';
-        this.db.get(query, [ticketNumber], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-}
-
-// Получение всех тикетов пользователя
-getUserTickets(userId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE creator_id = ? ORDER BY created_at DESC';
-        this.db.all(query, [userId], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Получение всех активных тикетов
-getAllActiveTickets() {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE status != "Закрыт" ORDER BY created_at DESC';
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-// Получение количества тикетов пользователя
-getUserTicketsCount(userId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT COUNT(*) as count FROM tickets WHERE creator_id = ?';
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row.count || 0);
-            }
-        });
-    });
-}
-
-// Получение тикетов по куратору
-getTicketsByCurator(curatorId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE curator_id = ? AND status NOT IN ("Завершен", "Закрыт")';
-        this.db.all(query, [curatorId], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-getUserActiveTickets(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT * FROM tickets
-            WHERE creator_id = ?
-            AND status NOT IN ('Закрыт', 'Завершён')
-        `;
-        this.db.all(query, [userId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows || []);
-        });
-    });
-}
-
-  
-
-// Получение свободных тикетов (без куратора)
-getFreeTickets() {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE curator_id IS NULL AND status = "Ожидает куратора" ORDER BY created_at ASC';
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Назначение куратора
-assignCurator(ticketNumber, curatorId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = ?, status = 'В работе', updated_at = CURRENT_TIMESTAMP 
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(query, [curatorId, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Обновление статуса тикета
-updateTicketStatus(ticketNumber, status) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET status = ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(query, [status, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-// Получение занятых тикетов (с куратором)
-getOccupiedTickets() {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE curator_id IS NOT NULL AND status != "Закрыт" ORDER BY created_at DESC';
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-// Добавьте эти методы в класс Database
-
-// Методы для работы с отзывами кураторов
-addCuratorReview(ticketNumber, curatorId, reviewerId, rating, comment) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            INSERT INTO curator_reviews (ticket_number, curator_id, reviewer_id, rating, comment)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-        this.db.run(query, [ticketNumber, curatorId, reviewerId, rating, comment], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.lastID);
-            }
-        });
-    });
-}
-async getUserCharacters(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `SELECT * FROM characters WHERE user_id = ? ORDER BY name ASC`;
-        this.db.all(query, [userId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows || []);
-        });
-    });
-}
-// Проверка, оставлял ли пользователь отзыв
-hasUserReviewedTicket(ticketNumber, userId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT COUNT(*) as count FROM curator_reviews WHERE ticket_number = ? AND reviewer_id = ?';
-        this.db.get(query, [ticketNumber, userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row.count > 0);
-            }
-        });
-    });
-}
-
-// Получение рейтинга куратора
-getCuratorRating(curatorId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT 
-                AVG(CAST(rating as REAL)) as average_rating,
-                COUNT(*) as total_reviews
-            FROM curator_reviews 
-            WHERE curator_id = ?
-        `;
-        this.db.get(query, [curatorId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve({
-                    average_rating: row.average_rating || 0,
-                    total_reviews: row.total_reviews || 0
-                });
-            }
-        });
-    });
-}
-
-// Получение всех рейтингов кураторов
-getAllCuratorRatings() {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT 
-                curator_id,
-                AVG(CAST(rating as REAL)) as average_rating,
-                COUNT(*) as total_reviews,
-                COUNT(DISTINCT ticket_number) as total_tickets
-            FROM curator_reviews 
-            GROUP BY curator_id
-            ORDER BY average_rating DESC, total_reviews DESC
-        `;
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Смена куратора
-changeCurator(ticketNumber, newCuratorId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(query, [newCuratorId, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Удаление куратора
-removeCurator(ticketNumber) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = NULL, status = 'Ожидает куратора', updated_at = CURRENT_TIMESTAMP 
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(query, [ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Получение всех закрытых тикетов
-getClosedTickets() {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE status = "Закрыт" ORDER BY updated_at DESC';
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Обновление участников тикета
-updateTicketParticipants(ticketNumber, participants) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET participants = ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(query, [participants, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-
-
-createTicketWithValidation(ticketData) {
-    return new Promise(async (resolve, reject) => {
-        try {
-            // 1. Проверка кулдауна (48 часов между тикетами)
-            const lastTicket = await this.getLastUserTicket(ticketData.creator_id);
-            if (lastTicket) {
-                const lastTicketTime = new Date(lastTicket.created_at);
-                const now = new Date();
-                const hoursDiff = (now - lastTicketTime) / (1000 * 60 * 60);
-                
-                if (hoursDiff < 48) {
-                    const remainingHours = Math.ceil(48 - hoursDiff);
-                    throw new Error(`COOLDOWN:${remainingHours}`);
-                }
-            }
-
-            // 2. Проверка активного тикета
-            const activeTickets = await this.getUserActiveTickets(ticketData.creator_id);
-            if (activeTickets.length > 0) {
-                throw new Error('ACTIVE_TICKET');
-            }
-
-            // 3. Валидация персонажей
-            const characterIds = ticketData.character_ids.split(',')
-                .map(id => id.trim())
-                .filter(id => id && !isNaN(parseInt(id)))
-                .map(id => parseInt(id));
-
-            if (characterIds.length === 0) {
-                throw new Error('NO_VALID_CHARACTERS');
-            }
-
-            // 4. Проверка принадлежности персонажей пользователю
-            const validatedCharacters = [];
-            for (const charId of characterIds) {
-                const character = await this.getCharacterById(charId);
-                if (!character) {
-                    continue; // Пропускаем несуществующие персонажи
-                }
-                if (character.user_id !== ticketData.creator_id) {
-                    continue; // Пропускаем чужие персонажи
-                }
-                validatedCharacters.push(character);
-            }
-
-            if (validatedCharacters.length === 0) {
-                throw new Error('NO_USER_CHARACTERS');
-            }
-
-            // 5. Создание тикета
-            const ticketId = await this.createTicket(ticketData);
-
-            resolve({
-                ticketId,
-                validatedCharacters
-            });
-
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-// Вспомогательные методы для проверок
-getLastUserTicket(userId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE creator_id = ? ORDER BY created_at DESC LIMIT 1';
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-}
-
-getUserActiveTickets(userId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE creator_id = ? AND status NOT IN ("Завершен", "Закрыт")';
-        this.db.all(query, [userId], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Методы для управления кураторами (если еще нет)
-changeCurator(ticketNumber, newCuratorId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = ?, status = 'В работе', updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        this.db.run(query, [newCuratorId, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-removeCurator(ticketNumber) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = NULL, status = 'Ожидает куратора', updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        this.db.run(query, [ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Получение тикета по ID канала
-getTicketByChannelId(channelId) {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE channel_id = ?';
-        this.db.get(query, [channelId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-}
-
-
-updateTicketParticipants(ticketNumber, participants) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET participants = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        this.db.run(query, [participants, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Метод для получения закрытых тикетов
-getClosedTickets() {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT * FROM tickets WHERE status IN ("Завершен", "Закрыт") ORDER BY updated_at DESC';
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-resetUserTicketCooldown(userId) {
-    return new Promise((resolve, reject) => {
-        // Находим последний тикет пользователя с кулдауном
-        const selectQuery = `
-            SELECT id FROM tickets
-            WHERE creator_id = ? AND next_ticket_allowed IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1
-        `;
-        this.db.get(selectQuery, [userId], (selectErr, row) => {
-            if (selectErr) return reject(selectErr);
-            if (!row) return resolve(0); // Нет тикетов с кулдауном
-
-            // Обнуляем кулдаун
-            const updateQuery = `
-                UPDATE tickets
-                SET next_ticket_allowed = NULL
-                WHERE id = ?
-            `;
-            this.db.run(updateQuery, [row.id], function (updateErr) {
-                if (updateErr) return reject(updateErr);
-                resolve(this.changes); // Возвращаем число изменённых строк
-            });
-        });
-    });
-}
-
-
-initTrainingSystemTables() {
-    console.log('🔧 Инициализация таблиц системы тренировок...');
-
-    // Таблица сессий тренировок
-    const createTrainingSessionsTable = `
-        CREATE TABLE IF NOT EXISTS trainingsystem_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            guild_id TEXT NOT NULL,
-            channel_id TEXT NOT NULL,
-            character_id INTEGER,
-            total_hours INTEGER NOT NULL,
-            current_hour INTEGER DEFAULT 1,
-            training_type TEXT NOT NULL,
-            status TEXT DEFAULT 'active',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_update DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completed_at DATETIME,
-            FOREIGN KEY (character_id) REFERENCES characters(id)
-        )
-    `;
-
-    this.db.run(createTrainingSessionsTable, (err) => {
-        if (err) {
-            console.error('❌ Ошибка создания таблицы trainingsystem_sessions:', err);
-        } else {
-            console.log('✅ Таблица trainingsystem_sessions создана/проверена');
-        }
-    });
-
-    // Добавляем колонку character_id если её нет (миграция для существующих БД)
-    const addCharacterIdColumn = `ALTER TABLE trainingsystem_sessions ADD COLUMN character_id INTEGER`;
-    this.db.run(addCharacterIdColumn, (err) => {
-        if (err && !err.message.includes('duplicate column name')) {
-            console.error('⚠️ Ошибка добавления character_id:', err.message);
-        } else if (!err) {
-            console.log('✅ Колонка character_id добавлена в trainingsystem_sessions');
-        }
-    });
-
-    // Таблица постов тренировок
-    const createTrainingPostsTable = `
-        CREATE TABLE IF NOT EXISTS trainingsystem_posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER NOT NULL,
-            hour_number INTEGER NOT NULL,
-            post_number INTEGER NOT NULL,
-            message_id TEXT NOT NULL,
-            content TEXT NOT NULL,
-            symbols_count INTEGER NOT NULL,
-            posted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (session_id) REFERENCES trainingsystem_sessions(id)
-        )
-    `;
-
-    this.db.run(createTrainingPostsTable, (err) => {
-        if (err) {
-            console.error('❌ Ошибка создания таблицы trainingsystem_posts:', err);
-        } else {
-            console.log('✅ Таблица trainingsystem_posts создана/проверена');
-        }
-    });
-
-    // Таблица проверок тренировок
-    const createTrainingReviewsTable = `
-        CREATE TABLE IF NOT EXISTS trainingsystem_reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER NOT NULL,
-            reviewer_id TEXT,
-            status TEXT DEFAULT 'pending',
-            review_message_id TEXT,
-            feedback TEXT,
-            approved BOOLEAN DEFAULT 0,
-            reviewed_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (session_id) REFERENCES trainingsystem_sessions(id)
-        )
-    `;
-
-    this.db.run(createTrainingReviewsTable, (err) => {
-        if (err) {
-            console.error('❌ Ошибка создания таблицы trainingsystem_reviews:', err);
-        } else {
-            console.log('✅ Таблица trainingsystem_reviews создана/проверена');
-        }
-    });
-    // Добавляем колонку hour_start_time (без DEFAULT CURRENT_TIMESTAMP при ALTER)
-    const addHourStartTimeColumn = `
-        ALTER TABLE trainingsystem_sessions 
-        ADD COLUMN hour_start_time DATETIME
-    `;
-
-    this.db.run(addHourStartTimeColumn, (err) => {
-        if (err && !err.message.includes('duplicate column name')) {
-            console.error('⚠️ Ошибка добавления hour_start_time:', err.message);
-        } else if (!err) {
-            console.log('✅ Колонка hour_start_time добавлена в trainingsystem_sessions');
-
-            // После добавления колонки, устанавливаем значения для существующих записей
-            const updateExistingRows = `
-                UPDATE trainingsystem_sessions 
-                SET hour_start_time = created_at 
-                WHERE hour_start_time IS NULL
-            `;
-            this.db.run(updateExistingRows, (updateErr) => {
-                if (updateErr) {
-                    console.error('⚠️ Ошибка обновления hour_start_time:', updateErr.message);
-                } else {
-                    console.log('✅ Значения hour_start_time обновлены для существующих записей');
-                }
-            });
-        }
-    });
-    console.log('✅ Инициализация таблиц системы тренировок завершена');
-
-}
-
-// ===== МЕТОДЫ ДЛЯ РАБОТЫ С ТРЕНИРОВКАМИ =====
-getAllActiveTrainingSessions() {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT * FROM trainingsystem_sessions 
-            WHERE status = 'active' 
-            ORDER BY created_at DESC
-        `;
-        this.db.all(query, [], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows || []);
-        });
-    });
-}
-
-updateTrainingSessionHourStartTime(sessionId, hourStartTime) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE trainingsystem_sessions 
-            SET hour_start_time = ?, last_update = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        `;
-        this.db.run(query, [new Date(hourStartTime).toISOString(), sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-
-getActiveTraining(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT * FROM trainingsystem_sessions 
-            WHERE user_id = ? AND status = 'active' 
-            ORDER BY created_at DESC LIMIT 1
-        `;
-        this.db.get(query, [userId], (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-        });
-    });
-}
-
-createTrainingSession(data) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            INSERT INTO trainingsystem_sessions 
-            (user_id, guild_id, channel_id, character_id, total_hours, training_type, current_hour, status)
-            VALUES (?, ?, ?, ?, ?, ?, 1, 'active')
-        `;
-        
-        this.db.run(query, [
-            data.userId,
-            data.guildId,
-            data.channelId,
-            data.characterId || null,
-            data.hours,
-            data.type
-        ], function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-        });
-    });
-}
-
-checkTrainingCooldown(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT completed_at FROM trainingsystem_sessions 
-            WHERE user_id = ? AND status = 'completed' 
-            ORDER BY completed_at DESC LIMIT 1
-        `;
-        
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else if (!row) {
-                resolve(0); // Нет завершенных тренировок
-            } else {
-                const completedTime = new Date(row.completed_at).getTime();
-                const now = Date.now();
-                const hoursPassed = (now - completedTime) / (1000 * 60 * 60);
-                const hoursLeft = Math.max(0, 24 - hoursPassed);
-                resolve(Math.ceil(hoursLeft));
-            }
-        });
-    });
-}
-
-
-getTrainingSessionById(sessionId) {
-    return new Promise((resolve, reject) => {
-        const query = `SELECT * FROM trainingsystem_sessions WHERE id = ?`;
-        this.db.get(query, [sessionId], (err, row) => {
-            if (err) reject(err);
-            else resolve(row || null);
-        });
-    });
-}
-
-saveTrainingPost(data) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            INSERT INTO trainingsystem_posts 
-            (session_id, hour_number, post_number, message_id, content, symbols_count)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        
-        this.db.run(query, [
-            data.sessionId,
-            data.hourNumber,
-            data.postNumber,
-            data.messageId,
-            data.content,
-            data.symbolsCount
-        ], function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-        });
-    });
-}
-
-getTrainingSessionPosts(sessionId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT * FROM trainingsystem_posts 
-            WHERE session_id = ? 
-            ORDER BY hour_number, post_number
-        `;
-        this.db.all(query, [sessionId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
-}
-
-updateTrainingSessionHour(sessionId, hourNumber) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE trainingsystem_sessions 
-            SET current_hour = ?, last_update = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        `;
-        this.db.run(query, [hourNumber, sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-completeTrainingSession(sessionId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE trainingsystem_sessions 
-            SET status = 'completed', completed_at = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        `;
-        this.db.run(query, [sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-failTrainingSession(sessionId, reason) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE trainingsystem_sessions 
-            SET status = ? 
-            WHERE id = ?
-        `;
-        this.db.run(query, [`failed_${reason}`, sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-createTrainingReview(sessionId, messageId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            INSERT INTO trainingsystem_reviews 
-            (session_id, review_message_id) 
-            VALUES (?, ?)
-        `;
-        this.db.run(query, [sessionId, messageId], function(err) {
-            if (err) reject(err);
-            else resolve(this.lastID);
-        });
-    });
-}
-
-updateTrainingReviewStatus(sessionId, reviewerId, approved, status) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE trainingsystem_reviews 
-            SET reviewer_id = ?, approved = ?, status = ?, reviewed_at = CURRENT_TIMESTAMP 
-            WHERE session_id = ?
-        `;
-        this.db.run(query, [reviewerId, approved ? 1 : 0, status, sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
-}
-
-
-checkTrainingCooldown(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT completed_at FROM trainingsystem_sessions 
-            WHERE user_id = ? AND status = 'completed' 
-            ORDER BY completed_at DESC LIMIT 1
-        `;
-        
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else if (!row) {
-                resolve(0); // Нет завершенных тренировок
-            } else {
-                const completedTime = new Date(row.completed_at).getTime();
-                const now = Date.now();
-                const hoursPassed = (now - completedTime) / (1000 * 60 * 60);
-                const hoursLeft = Math.max(0, 24 - hoursPassed);
-                resolve(Math.ceil(hoursLeft));
-            }
-        });
-    });
-}
-
-
-// Инициализация таблицы логов тикетов
-initTicketLogsTable() {
-    const createTicketLogsTableQuery = `
-    CREATE TABLE IF NOT EXISTS ticket_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        admin_id TEXT NOT NULL,
-        action_type TEXT NOT NULL,
-        ticket_number INTEGER,
-        target_user_id TEXT,
-        details TEXT,
-        success BOOLEAN DEFAULT 1,
-        channel_id TEXT,
-        guild_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `;
-
-    this.db.run(createTicketLogsTableQuery, (err) => {
-        if (err) {
-            console.error('Ошибка создания таблицы логов тикетов:', err);
-        } else {
-            console.log('Таблица логов тикетов создана успешно');
-        }
-    });
-}
-
-// Добавление записи в логи тикетов
-addTicketLog(logData) {
-    return new Promise((resolve, reject) => {
-        const query = `
-        INSERT INTO ticket_logs (admin_id, action_type, ticket_number, target_user_id, details, success, channel_id, guild_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        this.db.run(query, [
-            logData.admin_id,
-            logData.action_type,
-            logData.ticket_number || null,
-            logData.target_user_id || null,
-            logData.details || null,
-            logData.success !== false ? 1 : 0,
-            logData.channel_id || null,
-            logData.guild_id || null
-        ], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.lastID);
-            }
-        });
-    });
-}
-
-// Получение пользователей с активным кулдауном
-getUsersWithCooldown() {
-    return new Promise((resolve, reject) => {
-        const query = `
-        SELECT DISTINCT creator_id, next_ticket_allowed 
-        FROM tickets 
-        WHERE next_ticket_allowed > datetime('now')
-        ORDER BY next_ticket_allowed ASC
-        `;
-
-        this.db.all(query, [], (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows || []);
-            }
-        });
-    });
-}
-
-// Получение информации о кулдауне конкретного пользователя
-getUserCooldownInfo(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-        SELECT next_ticket_allowed, created_at 
-        FROM tickets 
-        WHERE creator_id = ? AND next_ticket_allowed IS NOT NULL
-        ORDER BY created_at DESC 
-        LIMIT 1
-        `;
-
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(row);
-            }
-        });
-    });
-}
-
-
-// Добавьте новый метод для установки кулдауна при завершении тикета
-setTicketCooldownOnCompletion(userId) {
-    return new Promise((resolve, reject) => {
-        const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов кулдаун
-        
-        const query = `
-            INSERT INTO tickets (creator_id, ticket_number, purpose, character_ids, status, next_ticket_allowed)
-            VALUES (?, 0, 'COOLDOWN_PLACEHOLDER', '', 'COOLDOWN', ?)
-            ON CONFLICT(creator_id) DO UPDATE SET
-            next_ticket_allowed = ?
-        `;
-        
-        this.db.run(query, [userId, nextAllowed.toISOString(), nextAllowed.toISOString()], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Модифицируйте createTicketWithCooldown чтобы НЕ устанавливать кулдаун при создании
-createTicketWithCooldown(ticketData) {
-    return new Promise((resolve, reject) => {
-        // Убираем установку next_ticket_allowed при создании
-        const query = `
-            INSERT INTO tickets (ticket_number, purpose, character_ids, creator_id, channel_id, participants)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        
-        this.db.run(query, [
-            ticketData.ticket_number,
-            ticketData.purpose,
-            ticketData.character_ids,
-            ticketData.creator_id,
-            ticketData.channel_id,
-            ticketData.participants || ''
-        ], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.lastID);
-            }
-        });
-    });
-}
-
-// Добавьте метод для установки кулдауна при завершении конкретного тикета
-setTicketCompletionCooldown(ticketNumber, userId) {
-    return new Promise((resolve, reject) => {
-        const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов кулдаун
-        
-        // Обновляем текущий тикет
-        const updateQuery = `
-            UPDATE tickets 
-            SET next_ticket_allowed = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        
-        this.db.run(updateQuery, [nextAllowed.toISOString(), ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-// Обновите метод getUserCooldown для правильной работы с новой логикой
-getUserCooldown(userId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            SELECT next_ticket_allowed
-            FROM tickets
-            WHERE creator_id = ? AND next_ticket_allowed IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1
-        `;
-        
-        this.db.get(query, [userId], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                if (!row || !row.next_ticket_allowed) {
-                    resolve(null); // Нет кулдауна
-                } else {
-                    const cooldownEnd = new Date(row.next_ticket_allowed);
-                    const now = new Date();
-                    if (now >= cooldownEnd) {
-                        resolve(null); // Кулдаун закончился
-                    } else {
-                        resolve(cooldownEnd); // Кулдаун активен
-                    }
-                }
-            }
-        });
-    });
-}
-
-
-
-
-}
-
-module.exports = Database;
-
-
-
