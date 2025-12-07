@@ -93,6 +93,9 @@ class ProfileHandler {
                 });
             }
 
+            // ПРИМЕЧАНИЕ: Discord webhook не поддерживает кастомные эмодзи в username
+            // Эмодзи будут отображаться в профиле персонажа через команду /профиль
+            
             // Отправляем через вебхук как обычное сообщение
             await webhook.send({
                 content: messageContent,
@@ -107,6 +110,24 @@ class ProfileHandler {
                     repliedUser: true
                 }
             });
+
+            // Логируем сообщение для статистики
+            // Примечание: character_id нужно добавить в user_profiles или связать с characters
+            try {
+                if (profile.id) {
+                    // Пытаемся найти связанного персонажа по имени
+                    const character = await this.db.getCharacterByName(message.author.id, profile.name);
+                    if (character) {
+                        await this.db.logCharacterMessage(
+                            character.id, 
+                            message.channel.id, 
+                            content.length
+                        );
+                    }
+                }
+            } catch (logError) {
+                // Игнорируем ошибки логирования
+            }
 
             // Удаляем оригинальное сообщение
             await message.delete();

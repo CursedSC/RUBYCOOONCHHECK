@@ -1,19 +1,37 @@
-const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, MessageFlags, ComponentType, ButtonStyle } = require('discord.js');
 const Database = require('../database');
+const fs = require('fs');
+const path = require('path');
 
 const db = new Database();
+
+// Загрузка конфига
+let ticketConfig;
+try {
+    ticketConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'ticketConfig.json'), 'utf8'));
+} catch (e) {
+    console.error('Ошибка загрузки ticketConfig.json:', e);
+    ticketConfig = { emojis: {}, system: { cooldownHours: 72 } };
+}
+
+const EMOJIS = ticketConfig.emojis || {};
+const COOLDOWN_HOURS = ticketConfig.system?.cooldownHours || 72;
 
 module.exports = {
     canHandle(interaction) {
         return (
             (interaction.isStringSelectMenu() && interaction.customId === 'permanent_ticket_menu') ||
-            (interaction.isButton() && interaction.customId === 'quick_create_ticket')
+            (interaction.isButton() && (
+                interaction.customId === 'quick_create_ticket' ||
+                interaction.customId === 'permanent_my_tickets' ||
+                interaction.customId === 'permanent_ticket_help'
+            ))
         );
     },
 
     async execute(interaction) {
         try {
-            // Обработка dropdown меню
+            // Обработка dropdown меню (легаси поддержка)
             if (interaction.isStringSelectMenu() && interaction.customId === 'permanent_ticket_menu') {
                 const selectedValue = interaction.values[0];
 
@@ -30,9 +48,15 @@ module.exports = {
                 }
             }
 
-            // Обработка кнопки быстрого создания
-            if (interaction.isButton() && interaction.customId === 'quick_create_ticket') {
-                await this.handleCreateTicket(interaction);
+            // Обработка кнопок
+            if (interaction.isButton()) {
+                if (interaction.customId === 'quick_create_ticket') {
+                    await this.handleCreateTicket(interaction);
+                } else if (interaction.customId === 'permanent_my_tickets') {
+                    await this.handleViewMyTickets(interaction);
+                } else if (interaction.customId === 'permanent_ticket_help') {
+                    await this.handleTicketHelp(interaction);
+                }
             }
 
         } catch (error) {
@@ -50,27 +74,73 @@ module.exports = {
         // Проверяем кулдаун
         const cooldownHours = await db.getCooldownHours(interaction.user.id);
         if (cooldownHours > 0) {
-            const cooldownEmbed = new EmbedBuilder()
-                .setTitle('⏰ Активен кулдаун тикетов')
-                .setDescription(`Вы можете создать следующий тикет через **${cooldownHours} часов**!`)
-                .setColor(0xff6b6b)
-                .addFields(
-                    { 
-                        name: '📋 Информация о кулдауне', 
-                        value: `Кулдаун между тикетами составляет 48 часов.\nЭто сделано для предотвращения спама и обеспечения качественной обработки каждого тикета.`, 
-                        inline: false 
+            const components = [];
+            
+            // Контейнер с информацией о кулдауне
+            const cooldownContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('ff6b6b', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `# ⏰ Активен кулдаун тикетов`
                     },
-                    { 
-                        name: '💡 Что можно сделать?', 
-                        value: `• Просмотреть свои активные тикеты\n• Обратиться к куратору в существующем тикете\n• Подождать окончания кулдауна`, 
-                        inline: false 
+                    {
+                        type: ComponentType.Separator,
+                        divider: true
+                    },
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `Вы можете создать следующий тикет через **${cooldownHours} часов**!`
                     }
-                )
-                .setTimestamp();
+                ]
+            };
+            components.push(cooldownContainer);
+
+            // Информация о системе
+            const infoContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('3498db', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `### 📋 Информация о кулдауне\n` +
+                                 `Кулдаун между тикетами составляет 72 часа (3 дня).\n` +
+                                 `Это сделано для предотвращения спама и обеспечения качественной обработки каждого тикета.`
+                    },
+                    {
+                        type: ComponentType.Separator,
+                        divider: true
+                    },
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `### 💡 Что можно сделать?\n` +
+                                 `• Просмотреть свои активные тикеты\n` +
+                                 `• Обратиться к куратору в существующем тикете\n` +
+                                 `• Подождать окончания кулдауна`
+                    }
+                ]
+            };
+            components.push(infoContainer);
+
+            // Кнопка просмотра тикетов
+            const buttonsRow = {
+                type: ComponentType.ActionRow,
+                components: [
+                    {
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Primary,
+                        label: 'Мои тикеты',
+                        custom_id: 'permanent_my_tickets',
+                        emoji: { name: '📋' }
+                    }
+                ]
+            };
+            components.push(buttonsRow);
 
             return await interaction.reply({
-                embeds: [cooldownEmbed],
-                flags: MessageFlags.Ephemeral
+                flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+                components: components
             });
         }
 
@@ -82,23 +152,46 @@ module.exports = {
         const characters = await db.getAllCharactersByUserId(interaction.user.id);
         
         if (characters.length === 0) {
-            const noCharactersEmbed = new EmbedBuilder()
-                .setTitle('❌ Нет персонажей')
-                .setDescription('У вас нет персонажей для создания тикета!')
-                .setColor(0xff6b6b)
-                .addFields({
-                    name: '💡 Что делать?',
-                    value: 'Сначала создайте персонажа, а затем возвращайтесь к созданию тикета.',
-                    inline: false
-                });
+            const components = [];
+            
+            const noCharsContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('ff6b6b', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `# ❌ Нет персонажей`
+                    },
+                    {
+                        type: ComponentType.Separator,
+                        divider: true
+                    },
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `У вас нет персонажей для создания тикета!`
+                    }
+                ]
+            };
+            components.push(noCharsContainer);
+
+            const helpContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('3498db', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `### 💡 Что делать?\n` +
+                                 `Сначала создайте персонажа, а затем возвращайтесь к созданию тикета.`
+                    }
+                ]
+            };
+            components.push(helpContainer);
 
             return await interaction.reply({
-                embeds: [noCharactersEmbed],
-                flags: MessageFlags.Ephemeral
+                flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+                components: components
             });
         }
-
-        const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
         const modal = new ModalBuilder()
             .setCustomId(`create_ticket_modal_${interaction.user.id}`)
@@ -132,106 +225,206 @@ module.exports = {
     async handleViewMyTickets(interaction) {
         const tickets = await db.getUserTickets(interaction.user.id);
         
-        if (tickets.length === 0) {
-            const noTicketsEmbed = new EmbedBuilder()
-                .setTitle('📋 Ваши тикеты')
-                .setDescription('У вас пока нет тикетов.')
-                .setColor(0x3498db)
-                .addFields({
-                    name: '💡 Создайте свой первый тикет!',
-                    value: 'Используйте кнопку или меню выше для создания тикета.',
-                    inline: false
-                })
-                .setTimestamp();
+        const components = [];
 
-            return await interaction.reply({
-                embeds: [noTicketsEmbed],
-                flags: MessageFlags.Ephemeral
-            });
-        }
-
-        const embed = new EmbedBuilder()
-            .setTitle('📋 Ваши тикеты')
-            .setDescription('**Список всех ваших тикетов:**')
-            .setColor(0x3498db)
-            .setTimestamp()
-            .setFooter({ text: `Всего тикетов: ${tickets.length}` });
-
-        // Функция для получения эмодзи статуса
-        const getStatusEmoji = (status) => {
-            const statusEmojis = {
-                'Ожидает куратора': '⏳',
-                'В работе': '🔧',
-                'Ожидает ответа': '⏰',
-                'Завершен': '✅',
-                'Приостановлен': '⏸️',
-                'Закрыт': '❌',
-                'Почти готов': '⚡'
-            };
-            return statusEmojis[status] || 'ℹ️';
+        // Заголовок
+        const headerContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('3498db', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `# 📋 Ваши тикеты`
+                }
+            ]
         };
+        components.push(headerContainer);
 
-        for (const ticket of tickets.slice(0, 10)) {
-            const channel = interaction.guild.channels.cache.get(ticket.channel_id);
-            const channelMention = channel ? `<#${ticket.channel_id}>` : 'Канал удален';
-            const statusEmoji = getStatusEmoji(ticket.status);
+        if (tickets.length === 0) {
+            const emptyContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('5865f2', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `*У вас пока нет тикетов.*\n\n` +
+                                 `### 💡 Создайте свой первый тикет!\n` +
+                                 `Используйте кнопку или меню выше для создания тикета.`
+                    }
+                ]
+            };
+            components.push(emptyContainer);
+        } else {
+            // Функция для получения эмодзи статуса
+            const getStatusEmoji = (status) => {
+                const statusEmojis = {
+                    'Ожидает куратора': '⏳',
+                    'В работе': '🔧',
+                    'Ожидает ответа': '⏰',
+                    'Завершен': '✅',
+                    'Приостановлен': '⏸️',
+                    'Закрыт': '❌',
+                    'Почти готов': '⚡'
+                };
+                return statusEmojis[status] || 'ℹ️';
+            };
 
-            embed.addFields({
-                name: `🎫 Тикет #${ticket.ticket_number}`,
-                value: `${statusEmoji} **Статус:** ${ticket.status}\n👨‍💼 **Куратор:** ${ticket.curator_id ? `<@${ticket.curator_id}>` : 'Не назначен'}\n📍 **Канал:** ${channelMention}`,
-                inline: true
-            });
+            // Группируем тикеты для отображения
+            const ticketsList = tickets.slice(0, 10).map(ticket => {
+                const channel = interaction.guild.channels.cache.get(ticket.channel_id);
+                const channelMention = channel ? `<#${ticket.channel_id}>` : 'Канал удален';
+                const statusEmoji = getStatusEmoji(ticket.status);
+
+                return `${EMOJIS.ticket || '🎫'} **Тикет #${ticket.ticket_number}**\n` +
+                       `${statusEmoji} Статус: ${ticket.status}\n` +
+                       `👨‍💼 Куратор: ${ticket.curator_id ? `<@${ticket.curator_id}>` : 'Не назначен'}\n` +
+                       `📍 Канал: ${channelMention}`;
+            }).join('\n\n');
+
+            const ticketsContainer = {
+                type: ComponentType.Container,
+                accent_color: parseInt('2ecc71', 16),
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: `### Список ваших тикетов (${tickets.length})\n\n${ticketsList}`
+                    }
+                ]
+            };
+            components.push(ticketsContainer);
         }
+
+        // Футер
+        const footerContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('95a5a6', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `*Всего тикетов: ${tickets.length}*`
+                }
+            ]
+        };
+        components.push(footerContainer);
 
         await interaction.reply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+            components: components
         });
     },
 
     async handleTicketHelp(interaction) {
-        const helpEmbed = new EmbedBuilder()
-            .setTitle('❓ Помощь по системе тикетов')
-            .setDescription('**Подробная информация о работе с тикетами**')
-            .setColor(0x9932cc)
-            .addFields(
+        const components = [];
+
+        // Заголовок
+        const headerContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('9932cc', 16),
+            components: [
                 {
-                    name: '🎫 Что такое тикет?',
-                    value: 'Тикет - это персональный канал для работы с вашими персонажами. В нем куратор проведёт для вас RP ситуацию, которая поможет вам в развитии вашего персонажа.',
-                    inline: false
-                },
-                {
-                    name: '📝 Как создать тикет?',
-                    value: '**Способ 1:** Нажмите кнопку "📝 Создать тикет"\n**Способ 2:** Используйте команду `/тикет`\n**Способ 3:** Выберите "📝 Создать тикет" в меню выше',
-                    inline: false
-                },
-                {
-                    name: '⏰ Кулдаун тикетов',
-                    value: 'Между созданием тикетов действует кулдаун в **48 часов**. Это предотвращает спам и обеспечивает качественное обслуживание.',
-                    inline: false
-                },
-                {
-                    name: '👨‍💼 Работа с куратором',
-                    value: 'После создания тикета его возьмет свободный куратор.',
-                    inline: false
-                },
-                {
-                    name: '📊 Статусы тикетов',
-                    value: '⏳ **Ожидает куратора** - тикет создан, ждет куратора\n🔧 **В работе** - куратор работает с тикетом\n⏰ **Ожидает ответа** - ждет вашего ответа\n✅ **Завершен** - работа завершена',
-                    inline: false
-                },
-                {
-                    name: '⭐ Оценка работы',
-                    value: 'После завершения тикета вы можете оценить работу куратора от 1 до 5 звезд и оставить комментарий.',
-                    inline: false
+                    type: ComponentType.TextDisplay,
+                    content: `# ❓ Помощь по системе тикетов\n` +
+                             `**Подробная информация о работе с тикетами**`
                 }
-            )
-            .setTimestamp()
-            .setFooter({ text: 'Система тикетов • Помощь' });
+            ]
+        };
+        components.push(headerContainer);
+
+        // Что такое тикет
+        const whatIsContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('3498db', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `### ${EMOJIS.ticket || '🎫'} Что такое тикет?\n` +
+                             `Тикет — это персональный канал для работы с вашими персонажами. ` +
+                             `В нем куратор проведёт для вас RP ситуацию, которая поможет вам в развитии вашего персонажа.`
+                }
+            ]
+        };
+        components.push(whatIsContainer);
+
+        // Как создать
+        const howToContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('2ecc71', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `### 📝 Как создать тикет?\n\n` +
+                             `**Способ 1:** Нажмите кнопку "📝 Создать тикет"\n` +
+                             `**Способ 2:** Используйте команду \`/тикет\`\n` +
+                             `**Способ 3:** Выберите "📝 Создать тикет" в меню выше`
+                }
+            ]
+        };
+        components.push(howToContainer);
+
+        // Кулдаун и работа
+        const cooldownContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('f39c12', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `### ⏰ Кулдаун тикетов\n` +
+                             `Между созданием тикетов действует кулдаун **72 часа (3 дня)**. ` +
+                             `Это предотвращает спам и обеспечивает качественное обслуживание.\n\n` +
+                             `### 👨‍💼 Работа с куратором\n` +
+                             `После создания тикета его возьмет свободный куратор.`
+                }
+            ]
+        };
+        components.push(cooldownContainer);
+
+        // Статусы
+        const statusContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('9b59b6', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `### 📊 Статусы тикетов\n\n` +
+                             `⏳ **Ожидает куратора** — тикет создан, ждет куратора\n` +
+                             `🔧 **В работе** — куратор работает с тикетом\n` +
+                             `⏰ **Ожидает ответа** — ждет вашего ответа\n` +
+                             `✅ **Завершен** — работа завершена`
+                }
+            ]
+        };
+        components.push(statusContainer);
+
+        // Оценка
+        const ratingContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('f1c40f', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `### ⭐ Оценка работы\n` +
+                             `После завершения тикета вы можете оценить работу куратора от 1 до 5 звезд и оставить комментарий.`
+                }
+            ]
+        };
+        components.push(ratingContainer);
+
+        // Футер
+        const footerContainer = {
+            type: ComponentType.Container,
+            accent_color: parseInt('95a5a6', 16),
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: `*Система тикетов RubyBot • Помощь*`
+                }
+            ]
+        };
+        components.push(footerContainer);
 
         await interaction.reply({
-            embeds: [helpEmbed],
-            flags: MessageFlags.Ephemeral
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+            components: components
         });
     }
 };

@@ -1,11 +1,11 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags, ComponentType, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags, ComponentType, ButtonStyle, ButtonBuilder } = require('discord.js');
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const Database = require('../database');
 const db = new Database();
 
-const ADMIN_ROLE_ID = '1381909203005866034';
+const ADMIN_ROLE_ID = '1381909203005866034'; // ID роли высших админов
 const stylingCache = new Map();
 
 function getStatLevel(statValue, statType) {
@@ -427,6 +427,16 @@ module.exports = {
         (character.magic || 0);
 
       const customStyling = await loadCustomStyling(character.id);
+      
+      // Загружаем активный разделитель из магазина и кастомное эмодзи
+      let activeSeparator = null;
+      let customEmoji = null;
+      try {
+        activeSeparator = await db.getCharacterActiveSeparator(character.id);
+        customEmoji = await db.getCharacterCustomEmoji(character.id);
+      } catch (err) {
+        console.error('Ошибка загрузки данных магазина:', err);
+      }
 
       const SEPARATOR_CONFIG = (() => {
         const base = {
@@ -438,6 +448,35 @@ module.exports = {
           alternate: true,
           recolor: true
         };
+
+        // Приоритет: активный разделитель из магазина > кастомное оформление > базовый
+        if (activeSeparator) {
+          if (activeSeparator.is_custom) {
+            // Кастомный разделитель из магазина (с флагами recolorable и alternate)
+            const isRecolorable = activeSeparator.recolorable === 1 || activeSeparator.recolorable === true;
+            const isAlternate = (activeSeparator.alternate === 1 || activeSeparator.alternate === true) && activeSeparator.custom_separator2_url;
+            return {
+              image1: activeSeparator.custom_separator1_url || base.image1,
+              image2: activeSeparator.custom_separator2_url || activeSeparator.custom_separator1_url || base.image1,
+              width: base.width,
+              height: base.height,
+              enabled: true,
+              alternate: isAlternate,
+              recolor: isRecolorable
+            };
+          } else if (activeSeparator.shop_sep1) {
+            // Разделитель из магазина БД
+            return {
+              image1: activeSeparator.shop_sep1,
+              image2: activeSeparator.shop_sep2 || activeSeparator.shop_sep1,
+              width: base.width,
+              height: base.height,
+              enabled: true,
+              alternate: !!activeSeparator.shop_sep2,
+              recolor: true
+            };
+          }
+        }
 
         if (!customStyling) return base;
 
@@ -575,9 +614,19 @@ module.exports = {
         components: []
       };
 
+      // Формируем заголовок профиля с эмодзи
+      let emojiPrefix = '';
+      
+      if (customEmoji && customEmoji.discord_emoji_id) {
+        // Discord эмодзи - показываем как настоящий эмодзи
+        emojiPrefix = customEmoji.animated 
+          ? `<a:${customEmoji.emoji_name || 'custom'}:${customEmoji.discord_emoji_id}> `
+          : `<:${customEmoji.emoji_name || 'custom'}:${customEmoji.discord_emoji_id}> `;
+      }
+
       container.components.push({
         type: ComponentType.TextDisplay,
-        content: `# ${character.name}`
+        content: `# ${emojiPrefix}${character.name}`
       });
 
       if (character.nickname) {
@@ -687,35 +736,170 @@ module.exports = {
 
       let components = [container];
 
-      if (character.user_id === interaction.user.id || hasAdminRole) {
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId(`profile_manage_${character.id}`)
-          .setPlaceholder('Выберите действие для управления профилем')
-          .addOptions(
-            new StringSelectMenuOptionBuilder()
-              .setLabel('🖼️ Изменить аватар')
-              .setDescription('Загрузить новое изображение для персонажа')
-              .setValue('avatar')
-              .setEmoji('🖼️'),
-            new StringSelectMenuOptionBuilder()
-              .setLabel('🎨 Изменить цвет')
-              .setDescription('Изменить цвет профиля персонажа')
-              .setValue('color')
-              .setEmoji('🎨')
-          );
+      // === НАВИГАЦИЯ ПО ПРОФИЛЮ (стрелочки) ===
+      // Категории: профиль -> галерея -> достижения -> биография
+      // userId хранится для проверки кто может листать
+      
+      const isOwner = character.user_id === interaction.user.id;
+      
+      // Навигационные кнопки для ВСЕХ пользователей
+      const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`pnav_prev_0_${character.id}_${interaction.user.id}`)
+          .setLabel('◀')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`pnav_cat_0_${character.id}_${interaction.user.id}`)
+          .setLabel('📋 Профиль')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`pnav_next_0_${character.id}_${interaction.user.id}`)
+          .setLabel('▶')
+          .setStyle(ButtonStyle.Secondary)
+      );
+      components.push(navRow);
 
+      // Кнопки действий для ВЛАДЕЛЬЦА персонажа
+      if (isOwner) {
+        const ownerActionsRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`pact_avatar_${character.id}_${interaction.user.id}`)
+            .setLabel('🖼️ Аватар')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`pact_color_${character.id}_${interaction.user.id}`)
+            .setLabel('🎨 Цвет')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`pact_gallery_${character.id}_${interaction.user.id}`)
+            .setLabel('📸 Галерея')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`pact_bio_${character.id}_${interaction.user.id}`)
+            .setLabel('📖 Биография')
+            .setStyle(ButtonStyle.Secondary)
+        );
+        components.push(ownerActionsRow);
+      }
+
+      // === АДМИНСКОЕ МЕНЮ (только для высших админов) ===
         if (hasAdminRole) {
-          selectMenu.addOptions(
-            new StringSelectMenuOptionBuilder()
-              .setLabel('✨ Кастомное оформление')
-              .setDescription('Настроить уникальные разделители (PNG)')
-              .setValue('custom_styling')
-              .setEmoji('✨')
-          );
+        // Информация об оформлении
+        let sepDisplay = '📦 Стандартный';
+        if (activeSeparator) {
+          if (activeSeparator.is_custom) {
+            sepDisplay = '✨ Кастомный';
+          } else if (activeSeparator.name) {
+            sepDisplay = `🎨 ${activeSeparator.name}`;
+          }
         }
 
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-        components.push(row);
+        let emojiDisplay = '❌ Нет';
+        if (customEmoji && customEmoji.discord_emoji_id) {
+          const emojiStr = customEmoji.animated 
+            ? `<a:${customEmoji.emoji_name}:${customEmoji.discord_emoji_id}>`
+            : `<:${customEmoji.emoji_name}:${customEmoji.discord_emoji_id}>`;
+          emojiDisplay = `${emojiStr}`;
+        } else if (customEmoji && customEmoji.emoji_url) {
+          emojiDisplay = `🖼️ URL`;
+        }
+
+        // Админский контейнер с информацией
+        const stylingContainer = {
+          type: ComponentType.Container,
+          accent_color: parseInt('ED4245', 16),
+          components: [{
+            type: ComponentType.TextDisplay,
+            content: `### ⚡ Панель администратора\n**Разделитель:** ${sepDisplay} | **Эмодзи:** ${emojiDisplay}`
+          }]
+        };
+        components.push(stylingContainer);
+
+        // SelectMenu для админских действий (магазин и прочее)
+        const adminSelectRow = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`profile_admin_${character.id}`)
+            .setPlaceholder('⚙️ Выберите действие...')
+            .addOptions([
+              {
+                label: '📝 Редактировать информацию',
+                description: 'Изменить имя, расу, возраст и др.',
+                value: 'edit_info',
+                emoji: '📝'
+              },
+              {
+                label: '🖼️ Изменить аватар',
+                description: 'Установить новый аватар персонажа',
+                value: 'avatar',
+                emoji: '🖼️'
+              },
+              {
+                label: '🎨 Изменить цвет',
+                description: 'Изменить цвет профиля',
+                value: 'color',
+                emoji: '🎨'
+              },
+              {
+                label: '⚔️ Редактировать статы',
+                description: 'Изменить характеристики персонажа',
+                value: 'stats_edit',
+                emoji: '⚔️'
+              },
+              {
+                label: '🏆 Выдать достижение',
+                description: 'Добавить достижение персонажу',
+                value: 'achievement_add',
+                emoji: '🏆'
+              },
+              {
+                label: '📸 Управление галереей',
+                description: 'Добавить или удалить изображения',
+                value: 'gallery_manage',
+                emoji: '📸'
+              },
+              {
+                label: '📖 Редактировать биографию',
+                description: 'Изменить биографию персонажа',
+                value: 'bio_edit',
+                emoji: '📖'
+              },
+              {
+                label: '🎨 Магазин оформления',
+                description: 'Разделители, эмодзи и декорации',
+                value: 'shop',
+                emoji: '🛒'
+              },
+              {
+                label: '✨ Кастомное оформление',
+                description: 'Настроить индивидуальное оформление',
+                value: 'custom_styling',
+                emoji: '✨'
+              }
+            ])
+        );
+        components.push(adminSelectRow);
+
+        // Кнопки быстрого доступа
+        const adminRow1 = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`padm_info_${character.id}`)
+            .setLabel('📝 Инфо')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`padm_stats_${character.id}`)
+            .setLabel('⚔️ Статы')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`padm_achieve_${character.id}`)
+            .setLabel('🏆 Достижение')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`padm_shop_${character.id}`)
+            .setLabel('🛒 Магазин')
+            .setStyle(ButtonStyle.Danger)
+        );
+        components.push(adminRow1);
       }
 
       await interaction.reply({

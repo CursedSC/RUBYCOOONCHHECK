@@ -1,0 +1,152 @@
+{
+    "system": {
+        "enabled": true,
+        "cooldownDays": 3,
+        "cooldownHours": 72,
+        "maxActiveTickets": 1,
+        "autoDeleteOnComplete": true,
+        "autoDeleteDelay": 60000,
+        "autoDeleteOnClose": true,
+        "closeDeleteDelay": 10000
+    },
+    "roles": {
+        "curator": "1382005661369368586",
+        "admin": ["1382006178451685377", "1382005661369368586"],
+        "highAdmin": ["1382006799028322324"],
+        "adminPing": "1382005661369368586",
+        "profileAdmin": "1381909203005866034"
+    },
+    "channels": {
+        "ticketCategory": "1382492043216949359",
+        "overflowCategory": null,
+        "logChannel": null
+    },
+    "specialUsers": {
+        "owner": "416602253160480769"
+    },
+    "statuses": {
+        "waiting": {
+            "name": "Ожидает куратора",
+            "emoji": "⏳",
+            "color": "#ffa500"
+        },
+        "inProgress": {
+            "name": "В работе",
+            "emoji": "🔧",
+            "color": "#00ff00"
+        },
+        "waitingResponse": {
+            "name": "Ожидает ответа",
+            "emoji": "💬",
+            "color": "#ffff00"
+        },
+        "completed": {
+            "name": "Завершен",
+            "emoji": "✅",
+            "color": "#32cd32"
+        },
+        "paused": {
+            "name": "Приостановлен",
+            "emoji": "⏸️",
+            "color": "#ff6347"
+        },
+        "closed": {
+            "name": "Закрыт",
+            "emoji": "❌",
+            "color": "#666666"
+        },
+        "almostDone": {
+            "name": "Почти готов",
+            "emoji": "🎯",
+            "color": "#9370db"
+        }
+    },
+    "emojis": {
+        "ticketFree": "<:emptybox:1396816640196476998>",
+        "ticketOccupied": "<:Lock:1396817745399644270>",
+        "ticketCompleted": "<:Tick:1396822406751981702>",
+        "ticketPending": "<:PokemonTCGPWonderHourglass:1396822944252039268>",
+        "ticketPaused": "<:Pause:1396823161512919141>",
+        "ticketClosed": "<:Incorrect:1396823239669448845>",
+        "curator": "<:chief:1396827256596467742>",
+        "user": "<:user:1396827248098545726>",
+        "admin": "<:rubine:1396827267769962567>",
+        "accept": "<:Tick:1396822406751981702>",
+        "decline": "<:Incorrect:1396823239669448845>",
+        "manage": "⚙️",
+        "archive": "📦",
+        "statusChange": "🔄",
+        "participants": "👥",
+        "starEmpty": "<:star:1396814932397396048>",
+        "starFull": "<:starf:1396828897244610590>",
+        "starHalf": "<:starh:1396828886939074710>",
+        "loading": "⏳",
+        "success": "✅",
+        "error": "❌",
+        "warning": "⚠️",
+        "info": "ℹ️",
+        "medalGold": "🥇",
+        "medalSilver": "🥈",
+        "medalBronze": "🥉",
+        "trophy": "🏆",
+        "ticket": "🎫",
+        "search": "🔍",
+        "create": "📝"
+    },
+    "images": {
+        "playerGreeting": "https://cdn.discordapp.com/attachments/1383161274896220231/1396839686911299754/Slide_16_9_-_5.png",
+        "managementPanel": "https://media.discordapp.net/attachments/1383161274896220231/1396839688014401598/Slide_16_9_-_4.png",
+        "selectMenu": "https://media.discordapp.net/attachments/1383161274896220231/1396839686911299754/Slide_16_9_-_5.png",
+        "ticketPanel": "https://cdn.discordapp.com/attachments/1383161274896220231/1399271200936431676/1.png"
+    },
+    "rating": {
+        "enabled": true,
+        "maxStars": 5,
+        "allowComments": true,
+        "notifyCurator": true
+    },
+    "notifications": {
+        "notifyOnCreate": true,
+        "notifyOnComplete": true,
+        "notifyCuratorOnRating": true,
+        "dmOnComplete": true
+    },
+    "design": {
+        "useComponentsV2": true,
+        "primaryColor": "#3498db",
+        "successColor": "#32cd32",
+        "dangerColor": "#ff6b6b",
+        "warningColor": "#ffa500",
+        "embedFooter": "Система тикетов RubyBot",
+        "thumbnails": {
+            "create": "🎫",
+            "manage": "⚙️",
+            "complete": "✅"
+        },
+        "panelStyle": {
+            "titleEmoji": "🎫",
+            "title": "Система тикетов",
+            "description": "Выберите действие для работы с тикетами",
+            "buttonStyle": "Primary",
+            "separatorColor": "#2f3136"
+        }
+    },
+    "messages": {
+        "cooldownMessage": "Вы можете создать следующий тикет через **{hours}** часов!",
+        "noCharactersMessage": "У вас нет персонажей для создания тикета!",
+        "ticketCreatedMessage": "Тикет #{number} успешно создан!",
+        "ticketCompletedMessage": "Тикет #{number} завершён!",
+        "curatorAssignedMessage": "Куратор {curator} взял тикет #{number}!",
+        "cooldownInfoMessage": "⏰ После завершения тикета действует кулдаун **72 часа** (3 дня)"
+    },
+    "activity": {
+        "enabled": true,
+        "updateInterval": 30000,
+        "types": [
+            { "type": "Watching", "text": "за {tickets} тикетами" },
+            { "type": "Playing", "text": "RubyBot | {tickets} открытых" },
+            { "type": "Listening", "text": "запросы игроков" },
+            { "type": "Competing", "text": "обработке тикетов" }
+        ]
+    }
+}

@@ -265,6 +265,77 @@ async function checkUserVerification() {
 }
 
 // =======================================
+// Загрузка конфига тикетов для активностей
+// =======================================
+let ticketActivityConfig;
+try {
+    ticketActivityConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'ticketConfig.json'), 'utf8'));
+} catch (e) {
+    ticketActivityConfig = { activity: { enabled: true, updateInterval: 30000 } };
+}
+
+// =======================================
+// Функция обновления активности бота
+// =======================================
+let activityIndex = 0;
+async function updateBotActivity() {
+    try {
+        if (!ticketActivityConfig.activity?.enabled) return;
+
+        // Получаем количество открытых тикетов
+        let openTicketsCount = 0;
+        try {
+            const freeTickets = await db.getFreeTickets();
+            const occupiedTickets = await db.getOccupiedTickets();
+            openTicketsCount = (freeTickets?.length || 0) + (occupiedTickets?.length || 0);
+        } catch (e) {
+            console.error('Ошибка получения количества тикетов:', e);
+        }
+
+        // Типы активностей
+        const activities = [
+            { type: ActivityType.Watching, text: `за ${openTicketsCount} тикетами` },
+            { type: ActivityType.Playing, text: `RubyBot | ${openTicketsCount} открытых` },
+            { type: ActivityType.Listening, text: `запросы игроков` },
+            { type: ActivityType.Custom, state: `🎫 Тикетов: ${openTicketsCount} | /тикет` },
+            { type: ActivityType.Competing, text: `обработке тикетов` }
+        ];
+
+        // Используем настройки из конфига если есть
+        const configActivities = ticketActivityConfig.activity?.types;
+        if (configActivities && configActivities.length > 0) {
+            activities.length = 0;
+            for (const act of configActivities) {
+                const text = act.text.replace('{tickets}', openTicketsCount);
+                activities.push({
+                    type: ActivityType[act.type] || ActivityType.Playing,
+                    text: text,
+                    state: text
+                });
+            }
+        }
+
+        // Циклическое переключение активности
+        const currentActivity = activities[activityIndex % activities.length];
+        activityIndex++;
+
+        const presenceData = {
+            activities: [{
+                type: currentActivity.type,
+                name: currentActivity.type === ActivityType.Custom ? 'custom' : currentActivity.text,
+                state: currentActivity.state || currentActivity.text
+            }],
+            status: PresenceUpdateStatus.Online
+        };
+
+        client.user.setPresence(presenceData);
+        
+    } catch (error) {
+        console.error('Ошибка обновления активности:', error);
+    }
+}
+
+// =======================================
 // Обработчик готовности
 // =======================================
 client.once('ready', async () => {
@@ -299,17 +370,13 @@ client.once('ready', async () => {
     // Деплой команд
     await autoDeployCommands();
 
-    // Присутствие
-    client.user.setPresence({
-        activities: [
-            {
-                type: ActivityType.Custom,
-                name: 'custom',
-                state: 'Мой владелец это Роман Цветков. . . ||🎃||',
-            },
-        ],
-        status: PresenceUpdateStatus.Online,
-    });
+    // === АКТИВНОСТИ БОТА (с количеством тикетов) ===
+    await updateBotActivity();
+    console.log('✅ Активность бота инициализирована');
+    
+    // Обновляем активность каждые 30 секунд (или по конфигу)
+    const activityInterval = ticketActivityConfig.activity?.updateInterval || 30000;
+    setInterval(updateBotActivity, activityInterval);
 
     setInterval(async () => {
         await checkExpiredPunishments();
@@ -731,6 +798,14 @@ client.on('interactionCreate', async (interaction) => {
             if (trainingHandler.canHandle(interaction)) {
                 console.log('✅ Training handler обработает модальное окно');
                 await trainingHandler.execute(interaction);
+                return;
+            }
+
+            // ПРОВЕРЯЕМ SEPARATOR SHOP HANDLER
+            const separatorShopHandler = require('./interactions/separatorShopHandler');
+            if (separatorShopHandler.canHandle(interaction)) {
+                console.log('✅ Separator shop handler обработает модальное окно');
+                await separatorShopHandler.execute(interaction);
                 return;
             }
 

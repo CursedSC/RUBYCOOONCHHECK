@@ -3,7 +3,15 @@ const path = require('path');
 
 class Database {
 constructor() {
-    this.db = new sqlite3.Database(path.join(__dirname, 'characters.db'));
+    this.db = new sqlite3.Database(path.join(__dirname, 'characters.db'), (err) => {
+        if (err) {
+            console.error('Ошибка подключения к БД:', err);
+        } else {
+            this.db.run('PRAGMA journal_mode = WAL');
+            this.db.configure('busyTimeout', 5000);
+            console.log('✅ База данных подключена');
+        }
+    });
     this.initDatabase();
     this.initUserActivityTable();
     this.initRubyCoinTable();
@@ -21,236 +29,50 @@ constructor() {
     this.initEconomyTables();
     this.initKindnessSystem();
     this.initCustomProfileStyling();
+    this.initSeparatorShopSystem();
+    this.initUserEmojisTable();
 }
 
-getAverageStatsForConsole(minTotalStats = 10000) {
+runWithRetry(query, params = [], retries = 3) {
     return new Promise((resolve, reject) => {
-        const query = `
-            SELECT 
-                COUNT(*) AS players_count,
-                ROUND(AVG(strength + agility + reaction + accuracy + endurance + durability + magic), 2) AS avg_total_stats
-            FROM characters
-            WHERE (strength + agility + reaction + accuracy + endurance + durability + magic) > ?
-        `;
-
-        this.db.get(query, [minTotalStats], (err, row) => {
-            if (err) {
-                reject(err);
-            } else {
-                const result = row || { players_count: 0, avg_total_stats: 0 };
-                console.log(`\n🔥 СТАТИСТИКА ПЕРСОНАЖЕЙ 🔥`);
-                console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-                console.log(`👥 Количество игроков с общим статом > ${minTotalStats}: ${result.players_count}`);
-                console.log(`⚡ Среднее количество статов на персонажа: ${result.avg_total_stats}`);
-                console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-                resolve(result);
-            }
-        });
+        const attempt = (retriesLeft) => {
+            this.db.run(query, params, function(err) {
+                if (err) {
+                    if (err.code === 'SQLITE_BUSY' && retriesLeft > 0) {
+                        console.log(`⚠️ База занята, повтор через 100мс (осталось попыток: ${retriesLeft})`);
+                        setTimeout(() => attempt(retriesLeft - 1), 100);
+                    } else {
+                        reject(err);
+                    }
+                } else {
+                    resolve({ lastID: this.lastID, changes: this.changes });
+                }
+            });
+        };
+        attempt(retries);
     });
 }
 
-
-// ==================== МЕТОДЫ ДЛЯ СИСТЕМЫ ДОБРОТЫ ====================
-  initEconomyTables() {
-    const createConfigTable = `
-      CREATE TABLE IF NOT EXISTS economyconfig (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        guildid TEXT NOT NULL UNIQUE,
-        baseunit TEXT NOT NULL DEFAULT 'peso',
-        pound_name TEXT NOT NULL DEFAULT 'Фунт',
-        sol_name   TEXT NOT NULL DEFAULT 'Соль',
-        peso_name  TEXT NOT NULL DEFAULT 'Пессо',
-        sol_per_pound   INTEGER NOT NULL DEFAULT 20,
-        peso_per_pound  INTEGER NOT NULL DEFAULT 100,
-        admin_only_issuance BOOLEAN NOT NULL DEFAULT 1,
-        offer_channel_id TEXT,
-        createdat DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updatedat DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-
-    const createWalletsTable = `
-      CREATE TABLE IF NOT EXISTS userwallets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userid  TEXT NOT NULL,
-        guildid TEXT NOT NULL,
-        balance_peso   INTEGER NOT NULL DEFAULT 0,
-        totalearned_peso INTEGER NOT NULL DEFAULT 0,
-        totalspent_peso  INTEGER NOT NULL DEFAULT 0,
-        createdat DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updatedat DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(userid, guildid)
-      );
-    `;
-
-    const createOffersTable = `
-      CREATE TABLE IF NOT EXISTS purchaseoffers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userid  TEXT NOT NULL,
-        guildid TEXT NOT NULL,
-        description TEXT NOT NULL,
-        amount_peso INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending', -- pending/approved/rejected/failed
-        adminid TEXT,
-        admincomment TEXT,
-        messageid TEXT,
-        channelid TEXT,
-        createdat DATETIME DEFAULT CURRENT_TIMESTAMP,
-        decidedat DATETIME
-      );
-    `;
-
-    this.db.run(createConfigTable, err => {
-      if (err) console.error('economyconfig', err);
-      else console.log('economyconfig');
-    });
-
-    this.db.run(createWalletsTable, err => {
-      if (err) console.error('userwallets', err);
-      else console.log('userwallets');
-    });
-
-    this.db.run(createOffersTable, err => {
-      if (err) console.error('purchaseoffers', err);
-      else console.log('purchaseoffers');
-    });
-  }
-
-  getEconomyConfig(guildId) {
+getWithRetry(query, params = [], retries = 3) {
     return new Promise((resolve, reject) => {
-      const query = `SELECT * FROM economyconfig WHERE guildid = ?`;
-      this.db.get(query, [guildId], (err, row) => {
-        if (err) return reject(err);
-        if (!row) {
-          // дефолтная конфигурация без записи
-          return resolve({
-            guildid: guildId,
-            baseunit: 'peso',
-            pound_name: 'Фунт',
-            sol_name: 'Соль',
-            peso_name: 'Пессо',
-            sol_per_pound: 20,
-            peso_per_pound: 100,
-            admin_only_issuance: 1,
-            offer_channel_id: null
-          });
-        }
-        resolve(row);
-      });
+        const attempt = (retriesLeft) => {
+            this.db.get(query, params, (err, row) => {
+                if (err) {
+                    if (err.code === 'SQLITE_BUSY' && retriesLeft > 0) {
+                        console.log(`⚠️ База занята, повтор через 100мс (осталось попыток: ${retriesLeft})`);
+                        setTimeout(() => attempt(retriesLeft - 1), 100);
+                    } else {
+                        reject(err);
+                    }
+                } else {
+                    resolve(row);
+                }
+            });
+        };
+        attempt(retries);
     });
-  }
-
-  setEconomyConfig(guildId, data) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        INSERT INTO economyconfig
-          (guildid, baseunit, pound_name, sol_name, peso_name,
-           sol_per_pound, peso_per_pound, admin_only_issuance, offer_channel_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(guildid) DO UPDATE SET
-          baseunit = excluded.baseunit,
-          pound_name = excluded.pound_name,
-          sol_name   = excluded.sol_name,
-          peso_name  = excluded.peso_name,
-          sol_per_pound  = excluded.sol_per_pound,
-          peso_per_pound = excluded.peso_per_pound,
-          admin_only_issuance = excluded.admin_only_issuance,
-          offer_channel_id    = excluded.offer_channel_id,
-          updatedat = CURRENT_TIMESTAMP;
-      `;
-      this.db.run(
-        query,
-        [
-          guildId,
-          data.baseunit || 'peso',
-          data.pound_name || 'Фунт',
-          data.sol_name || 'Соль',
-          data.peso_name || 'Пессо',
-          data.sol_per_pound ?? 20,
-          data.peso_per_pound ?? 100,
-          data.admin_only_issuance ? 1 : 0,
-          data.offer_channel_id || null
-        ],
-        function (err) {
-          if (err) return reject(err);
-          resolve(this.changes);
-        }
-      );
-    });
-  }
-    getUserBalance(userId, guildId) {
-    return new Promise((resolve, reject) => {
-      const query = `SELECT balance_peso FROM userwallets WHERE userid = ? AND guildid = ?`;
-      this.db.get(query, [userId, guildId], (err, row) => {
-        if (err) return reject(err);
-        resolve(row ? row.balance_peso : 0);
-      });
-    });
-  }
-
-  setUserBalance(userId, guildId, amountPeso) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        INSERT INTO userwallets (userid, guildid, balance_peso, totalearned_peso, totalspent_peso)
-        VALUES (?, ?, ?, ?, 0)
-        ON CONFLICT(userid, guildid) DO UPDATE SET
-          balance_peso = excluded.balance_peso,
-          updatedat = CURRENT_TIMESTAMP;
-      `;
-      this.db.run(query, [userId, guildId, amountPeso, amountPeso], function (err) {
-        if (err) return reject(err);
-        resolve(this.changes);
-      });
-    });
-  }
-
-  addBalance(userId, guildId, amountPeso) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        INSERT INTO userwallets (userid, guildid, balance_peso, totalearned_peso, totalspent_peso)
-        VALUES (?, ?, ?, ?, 0)
-        ON CONFLICT(userid, guildid) DO UPDATE SET
-          balance_peso     = balance_peso + ?,
-          totalearned_peso = totalearned_peso + ?,
-          updatedat        = CURRENT_TIMESTAMP;
-      `;
-      this.db.run(
-        query,
-        [userId, guildId, amountPeso, amountPeso, amountPeso, amountPeso],
-        function (err) {
-          if (err) return reject(err);
-          resolve(this.changes);
-        }
-      );
-    });
-  }
-
-  removeBalance(userId, guildId, amountPeso) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        UPDATE userwallets
-           SET balance_peso   = balance_peso - ?,
-               totalspent_peso = totalspent_peso + ?,
-               updatedat       = CURRENT_TIMESTAMP
-         WHERE userid = ? AND guildid = ? AND balance_peso >= ?;
-      `;
-      this.db.run(
-        query,
-        [amountPeso, amountPeso, userId, guildId, amountPeso],
-        function (err) {
-          if (err) return reject(err);
-          // если 0 — не хватило денег
-          resolve(this.changes);
-        }
-      );
-    });
-  }
-
-
-
-
-
-// ==================== ЭКОНОМИЧЕСКАЯ СИСТЕМА ====================
+}
+// ==== ЭКОНОМИЧЕСКАЯ СИСТЕМА ====
 initEconomySystem() {
     // Таблица балансов пользователей
     const createEconomyBalance = `
@@ -1379,7 +1201,11 @@ initProfilesTable() {
             name TEXT NOT NULL,
             avatar TEXT NOT NULL,
             color TEXT DEFAULT '#FFD700',
+            bio TEXT DEFAULT '',
+            banner TEXT DEFAULT NULL,
+            emoji TEXT DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, keyword)
         )
     `;
@@ -1389,23 +1215,60 @@ initProfilesTable() {
             console.error('Ошибка создания таблицы профилей:', err);
         } else {
             console.log('Таблица профилей создана успешно');
+            // Добавляем новые колонки если их нет
+            this.db.run(`ALTER TABLE user_profiles ADD COLUMN bio TEXT DEFAULT ''`, () => {});
+            this.db.run(`ALTER TABLE user_profiles ADD COLUMN banner TEXT DEFAULT NULL`, () => {});
+            this.db.run(`ALTER TABLE user_profiles ADD COLUMN emoji TEXT DEFAULT ''`, () => {});
+            this.db.run(`ALTER TABLE user_profiles ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`, () => {});
         }
     });
 }
 
-// Создание профиля
-createProfile(userId, keyword, name, avatar, color = '#FFD700') {
+// Создание профиля с расширенными данными
+createProfile(userId, keyword, name, avatar, color = '#FFD700', bio = '', banner = null) {
     return new Promise((resolve, reject) => {
         const query = `
-            INSERT INTO user_profiles (user_id, keyword, name, avatar, color)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO user_profiles (user_id, keyword, name, avatar, color, bio, banner)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
         
-        this.db.run(query, [userId, keyword, name, avatar, color], function(err) {
+        this.db.run(query, [userId, keyword, name, avatar, color, bio, banner], function(err) {
             if (err) {
                 reject(err);
             } else {
                 resolve(this.lastID);
+            }
+        });
+    });
+}
+
+// Обновление профиля
+updateProfile(userId, keyword, updates) {
+    return new Promise((resolve, reject) => {
+        const fields = [];
+        const values = [];
+        
+        if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
+        if (updates.avatar !== undefined) { fields.push('avatar = ?'); values.push(updates.avatar); }
+        if (updates.color !== undefined) { fields.push('color = ?'); values.push(updates.color); }
+        if (updates.bio !== undefined) { fields.push('bio = ?'); values.push(updates.bio); }
+        if (updates.banner !== undefined) { fields.push('banner = ?'); values.push(updates.banner); }
+        if (updates.emoji !== undefined) { fields.push('emoji = ?'); values.push(updates.emoji); }
+        
+        fields.push('updated_at = CURRENT_TIMESTAMP');
+        
+        if (fields.length === 1) {
+            return resolve(0);
+        }
+        
+        values.push(userId, keyword);
+        const query = `UPDATE user_profiles SET ${fields.join(', ')} WHERE user_id = ? AND keyword = ?`;
+        
+        this.db.run(query, values, function(err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(this.changes);
             }
         });
     });
@@ -2164,6 +2027,20 @@ async changeColumnTypes() {
         });
     }
 
+    // Получить персонажа по имени и ID пользователя
+    getCharacterByName(userId, name) {
+        return new Promise((resolve, reject) => {
+            const query = 'SELECT * FROM characters WHERE user_id = ? AND name = ? LIMIT 1';
+            this.db.get(query, [userId, name], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row);
+                }
+            });
+        });
+    }
+
     addCharacterStats(characterId, stats) {
         return new Promise((resolve, reject) => {
             const query = `
@@ -2301,6 +2178,45 @@ async changeColumnTypes() {
                     reject(err);
                 } else {
                     resolve(this.changes);
+                }
+            });
+        });
+    }
+
+    // Универсальная функция обновления персонажа
+    updateCharacter(characterId, data) {
+        return new Promise((resolve, reject) => {
+            const allowedFields = [
+                'name', 'nickname', 'race', 'age', 'mention', 'avatar_url', 'embed_color',
+                'strength', 'agility', 'reaction', 'accuracy', 
+                'hakivor', 'hakinab', 'hakiconq', 
+                'devilfruit', 'patronage', 'core', 'elements', 'martialarts',
+                'organization', 'position', 'budget', 'additional',
+                'biography', 'backstory', 'personality', 'goals'
+            ];
+
+            const updates = [];
+            const values = [];
+
+            for (const [key, value] of Object.entries(data)) {
+                if (allowedFields.includes(key) && value !== undefined) {
+                    updates.push(`${key} = ?`);
+                    values.push(value);
+                }
+            }
+
+            if (updates.length === 0) {
+                return resolve(false);
+            }
+
+            values.push(characterId);
+            const query = `UPDATE characters SET ${updates.join(', ')} WHERE id = ?`;
+
+            this.db.run(query, values, function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.changes > 0);
                 }
             });
         });
@@ -2733,26 +2649,243 @@ async changeColumnTypes() {
     // МЕТОДЫ ДЛЯ РАБОТЫ С RUBYCOINS
     // ===============================
     initRubyCoinTable() {
-        const createRubyCoinTableQuery = `
-            CREATE TABLE IF NOT EXISTS user_rubycoins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL UNIQUE,
-                rubycoins REAL DEFAULT 0.0,
-                total_earned REAL DEFAULT 0.0,
-                total_spent REAL DEFAULT 0.0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-        this.db.run(createRubyCoinTableQuery, (err) => {
-            if (err) {
-                console.error('Ошибка создания таблицы RubyCoin:', err);
-            } else {
-                console.log('Таблица RubyCoin создана успешно');
-            }
+    const createRubyCoinTableQuery = `
+        CREATE TABLE IF NOT EXISTS user_rubycoins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL UNIQUE,
+            rubycoins REAL DEFAULT 0.0,
+            total_earned REAL DEFAULT 0.0,
+            total_spent REAL DEFAULT 0.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+
+    // Создаем таблицу логов транзакций
+    const createRubyCoinLogsTable = `
+        CREATE TABLE IF NOT EXISTS rubycoin_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            admin_id TEXT,
+            action_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            balance_before REAL NOT NULL,
+            balance_after REAL NOT NULL,
+            category TEXT,
+            description TEXT,
+            username TEXT,
+            admin_username TEXT,
+            guild_id TEXT,
+            channel_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES user_rubycoins(user_id) ON DELETE CASCADE
+        );
+    `;
+
+    // Создаем индексы для ускорения запросов
+    const createIndexes = [
+        'CREATE INDEX IF NOT EXISTS idx_rubycoin_logs_user_id ON rubycoin_logs(user_id);',
+        'CREATE INDEX IF NOT EXISTS idx_rubycoin_logs_admin_id ON rubycoin_logs(admin_id);',
+        'CREATE INDEX IF NOT EXISTS idx_rubycoin_logs_action_type ON rubycoin_logs(action_type);',
+        'CREATE INDEX IF NOT EXISTS idx_rubycoin_logs_created_at ON rubycoin_logs(created_at DESC);'
+    ];
+
+    // Создаем главную таблицу
+    this.db.run(createRubyCoinTableQuery, (err) => {
+        if (err) {
+            console.error('❌ Ошибка создания таблицы user_rubycoins:', err);
+        } else {
+            console.log('✅ Таблица user_rubycoins создана');
+            
+            // После создания главной таблицы создаем таблицу логов
+            this.db.run(createRubyCoinLogsTable, (logErr) => {
+                if (logErr) {
+                    console.error('❌ Ошибка создания таблицы rubycoin_logs:', logErr);
+                } else {
+                    console.log('✅ Таблица rubycoin_logs создана (связана с user_rubycoins)');
+                    
+                    // Создаем индексы
+                    createIndexes.forEach(indexQuery => {
+                        this.db.run(indexQuery, (indexErr) => {
+                            if (indexErr && !indexErr.message.includes('already exists')) {
+                                console.error('❌ Ошибка создания индекса:', indexErr);
+                            }
+                        });
+                    });
+                    console.log('✅ Индексы для rubycoin_logs созданы');
+                }
+            });
+        }
+    });
+    }
+    // Логирование транзакции
+    logRubyCoinTransaction(data, targetUser = null, adminUser = null) {
+        return new Promise((resolve, reject) => {
+            const query = `
+                INSERT INTO rubycoin_logs 
+                (user_id, admin_id, action_type, amount, balance_before, balance_after, 
+                 category, description, username, admin_username, guild_id, channel_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+
+            this.db.run(query, [
+                data.userId,
+                data.adminId || null,
+                data.actionType,
+                data.amount,
+                data.balanceBefore,
+                data.balanceAfter,
+                data.category || null,
+                data.description || null,
+                targetUser?.username || null,
+                adminUser?.username || null,
+                data.guildId || null,
+                data.channelId || null
+            ], function(err) {
+                if (err) {
+                    console.error('❌ Ошибка логирования транзакции RubyCoin:', err);
+                    reject(err);
+                } else {
+                    console.log('✅ Транзакция RubyCoin залогирована, ID:', this.lastID);
+                    resolve(this.lastID);
+                }
+            });
         });
     }
 
+    // Получение статистики пользователя
+    getRubyCoinUserStats(userId) {
+        return new Promise((resolve, reject) => {
+            const query = `
+                SELECT 
+                    SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total_earned,
+                    SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) as total_spent,
+                    COUNT(*) as total_transactions,
+                    MIN(created_at) as first_transaction
+                FROM rubycoin_logs 
+                WHERE user_id = ?
+            `;
+
+            this.db.get(query, [userId], (err, row) => {
+                if (err) {
+                    console.error('❌ Ошибка получения статистики RubyCoin:', err);
+                    reject(err);
+                } else {
+                    resolve(row && row.total_transactions > 0 ? row : null);
+                }
+            });
+        });
+    }
+
+    // Поиск транзакций с фильтрами
+    searchRubyCoinTransactions(options = {}) {
+        return new Promise((resolve, reject) => {
+            let query = 'SELECT * FROM rubycoin_logs WHERE 1=1';
+            const params = [];
+
+            if (options.userId) {
+                query += ' AND user_id = ?';
+                params.push(options.userId);
+            }
+
+            if (options.adminId) {
+                query += ' AND admin_id = ?';
+                params.push(options.adminId);
+            }
+
+            if (options.actionType) {
+                query += ' AND action_type = ?';
+                params.push(options.actionType);
+            }
+
+            if (options.username) {
+                query += ' AND username LIKE ?';
+                params.push(`%${options.username}%`);
+            }
+
+            if (options.minAmount !== undefined && options.minAmount !== null) {
+                query += ' AND ABS(amount) >= ?';
+                params.push(options.minAmount);
+            }
+
+            if (options.maxAmount !== undefined && options.maxAmount !== null) {
+                query += ' AND ABS(amount) <= ?';
+                params.push(options.maxAmount);
+            }
+
+            if (options.guildId) {
+                query += ' AND guild_id = ?';
+                params.push(options.guildId);
+            }
+
+            query += ' ORDER BY created_at DESC LIMIT ?';
+            params.push(options.limit || 10);
+
+            console.log('🔍 Поиск транзакций RubyCoin, параметров:', params.length);
+
+            this.db.all(query, params, (err, rows) => {
+                if (err) {
+                    console.error('❌ Ошибка поиска транзакций RubyCoin:', err);
+                    reject(err);
+                } else {
+                    console.log(`✅ Найдено ${rows?.length || 0} транзакций RubyCoin`);
+                    resolve(rows || []);
+                }
+            });
+        });
+    }
+
+    // Топ по заработку RubyCoin
+    getRubyCoinTopEarners(guildId, limit = 10) {
+        return new Promise((resolve, reject) => {
+            const query = `
+                SELECT 
+                    r.user_id,
+                    r.rubycoins as current_balance,
+                    r.total_earned,
+                    r.total_spent,
+                    (SELECT username FROM rubycoin_logs WHERE user_id = r.user_id LIMIT 1) as username
+                FROM user_rubycoins r
+                WHERE EXISTS (
+                    SELECT 1 FROM rubycoin_logs l 
+                    WHERE l.user_id = r.user_id AND l.guild_id = ?
+                )
+                ORDER BY r.total_earned DESC
+                LIMIT ?
+            `;
+
+            this.db.all(query, [guildId, limit], (err, rows) => {
+                if (err) {
+                    console.error('❌ Ошибка получения топа RubyCoin:', err);
+                    reject(err);
+                } else {
+                    console.log(`✅ Топ RubyCoin: ${rows?.length || 0} пользователей`);
+                    resolve(rows || []);
+                }
+            });
+        });
+    }
+
+    // Получить полную историю транзакций пользователя
+    getRubyCoinHistory(userId, limit = 50) {
+        return new Promise((resolve, reject) => {
+            const query = `
+                SELECT * FROM rubycoin_logs 
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            `;
+
+            this.db.all(query, [userId, limit], (err, rows) => {
+                if (err) {
+                    console.error('❌ Ошибка получения истории RubyCoin:', err);
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        });
+    }
     getUserRubyCoins(userId) {
         return new Promise((resolve, reject) => {
             const query = 'SELECT rubycoins FROM user_rubycoins WHERE user_id = ?';
@@ -2766,26 +2899,46 @@ async changeColumnTypes() {
         });
     }
 
+   // === ОСНОВНАЯ ФУНКЦИЯ addRubyCoins ===
     addRubyCoins(userId, amount) {
         return new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO user_rubycoins (user_id, rubycoins, total_earned)
-                VALUES (?, ?, ?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET
-                    rubycoins = rubycoins + ?,
-                    total_earned = total_earned + ?,
-                    updated_at = CURRENT_TIMESTAMP
-            `;
-            this.db.run(query, [userId, amount, amount, amount, amount], function(err) {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(this.changes);
-                }
+            this.db.serialize(() => {
+                // Шаг 1: Создаём запись если не существует
+                const insertQuery = `
+                    INSERT INTO user_rubycoins (user_id, rubycoins, total_earned, total_spent)
+                    VALUES (?, 0, 0, 0)
+                    ON CONFLICT(user_id) DO NOTHING
+                `;
+
+                this.runWithRetry(insertQuery, [userId])
+                    .then(() => {
+                        // Шаг 2: Обновляем баланс с учётом заработка/траты
+                        const earnedAmount = amount >= 0 ? amount : 0;
+                        const spentAmount = amount < 0 ? Math.abs(amount) : 0;
+
+                        const updateQuery = `
+                            UPDATE user_rubycoins
+                            SET rubycoins = rubycoins + ?,
+                                total_earned = total_earned + ?,
+                                total_spent = total_spent + ?,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ?
+                        `;
+
+                        return this.runWithRetry(updateQuery, [amount, earnedAmount, spentAmount, userId]);
+                    })
+                    .then((result) => {
+                        console.log(`✅ RubyCoin изменён для ${userId}: ${amount >= 0 ? '+' : ''}${amount}`);
+                        resolve(result.changes);
+                    })
+                    .catch((err) => {
+                        console.error('❌ Ошибка addRubyCoins:', err);
+                        reject(err);
+                    });
             });
         });
     }
+
 
     removeRubyCoins(userId, amount) {
         return new Promise((resolve, reject) => {
@@ -3281,7 +3434,7 @@ async hasActiveTicket(userId) {
 async setTicketClosureCooldown(userId) {
     return new Promise((resolve, reject) => {
         const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов
+        nextAllowed.setHours(nextAllowed.getHours() + 72); // 72 часов
         
         const query = `UPDATE tickets 
                        SET nextticketallowed = ?
@@ -3298,7 +3451,6 @@ async setTicketClosureCooldown(userId) {
 }
 
 // Получить кулдаун пользователя (в часах)
-
 // Получить количество часов до окончания кулдауна
 getCooldownHours(userId) {
     return new Promise(async (resolve, reject) => {
@@ -3637,8 +3789,8 @@ createTicketWithValidation(ticketData) {
                 const now = new Date();
                 const hoursDiff = (now - lastTicketTime) / (1000 * 60 * 60);
                 
-                if (hoursDiff < 48) {
-                    const remainingHours = Math.ceil(48 - hoursDiff);
+                if (hoursDiff < 72) {
+                    const remainingHours = Math.ceil(72 - hoursDiff);
                     throw new Error(`COOLDOWN:${remainingHours}`);
                 }
             }
@@ -3717,40 +3869,6 @@ getUserActiveTickets(userId) {
     });
 }
 
-// Методы для управления кураторами (если еще нет)
-changeCurator(ticketNumber, newCuratorId) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = ?, status = 'В работе', updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        this.db.run(query, [newCuratorId, ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
-
-removeCurator(ticketNumber) {
-    return new Promise((resolve, reject) => {
-        const query = `
-            UPDATE tickets 
-            SET curator_id = NULL, status = 'Ожидает куратора', updated_at = CURRENT_TIMESTAMP
-            WHERE ticket_number = ?
-        `;
-        this.db.run(query, [ticketNumber], function(err) {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(this.changes);
-            }
-        });
-    });
-}
 
 // Получение тикета по ID канала
 getTicketByChannelId(channelId) {
@@ -4271,24 +4389,45 @@ getUserCooldownInfo(userId) {
 }
 
 
-// Добавьте новый метод для установки кулдауна при завершении тикета
+// Метод для установки кулдауна при завершении тикета
 setTicketCooldownOnCompletion(userId) {
     return new Promise((resolve, reject) => {
         const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов кулдаун
+        nextAllowed.setHours(nextAllowed.getHours() + 72); // 72 часа (3 дня) кулдаун
         
-        const query = `
-            INSERT INTO tickets (creator_id, ticket_number, purpose, character_ids, status, next_ticket_allowed)
-            VALUES (?, 0, 'COOLDOWN_PLACEHOLDER', '', 'COOLDOWN', ?)
-            ON CONFLICT(creator_id) DO UPDATE SET
-            next_ticket_allowed = ?
+        // Обновляем последний тикет пользователя или создаём запись в отдельной таблице
+        const updateQuery = `
+            UPDATE tickets 
+            SET next_ticket_allowed = ?
+            WHERE creator_id = ? 
+            AND ticket_number = (
+                SELECT ticket_number FROM tickets 
+                WHERE creator_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            )
         `;
         
-        this.db.run(query, [userId, nextAllowed.toISOString(), nextAllowed.toISOString()], function(err) {
+        this.db.run(updateQuery, [nextAllowed.toISOString(), userId, userId], function(err) {
             if (err) {
                 reject(err);
             } else {
-                resolve(this.changes);
+                if (this.changes === 0) {
+                    // Если нет тикетов, создаём запись-заглушку для кулдауна
+                    const insertQuery = `
+                        INSERT INTO tickets (creator_id, ticket_number, purpose, character_ids, status, next_ticket_allowed)
+                        VALUES (?, -1, 'COOLDOWN_RECORD', '', 'COOLDOWN', ?)
+                    `;
+                    this.db.run(insertQuery, [userId, nextAllowed.toISOString()], function(insertErr) {
+                        if (insertErr) {
+                            // Игнорируем ошибку дубликата
+                            console.log('Cooldown insert note:', insertErr.message);
+                        }
+                        resolve(1);
+                    });
+                } else {
+                    resolve(this.changes);
+                }
             }
         });
     });
@@ -4324,7 +4463,7 @@ createTicketWithCooldown(ticketData) {
 setTicketCompletionCooldown(ticketNumber, userId) {
     return new Promise((resolve, reject) => {
         const nextAllowed = new Date();
-        nextAllowed.setHours(nextAllowed.getHours() + 48); // 48 часов кулдаун
+        nextAllowed.setHours(nextAllowed.getHours() + 72); // 72 часа (3 дня) кулдаун
         
         // Обновляем текущий тикет
         const updateQuery = `
@@ -4376,6 +4515,966 @@ getUserCooldown(userId) {
 
 
 
+
+// ===============================
+// СИСТЕМА МАГАЗИНА РАЗДЕЛИТЕЛЕЙ
+// ===============================
+initSeparatorShopSystem() {
+    // Таблица доступных разделителей в магазине
+    const createSeparatorItemsTable = `
+        CREATE TABLE IF NOT EXISTS separator_shop_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            preview_url TEXT NOT NULL,
+            separator1_url TEXT NOT NULL,
+            separator2_url TEXT,
+            price INTEGER DEFAULT 0,
+            category TEXT DEFAULT 'Стандартные',
+            rarity TEXT DEFAULT 'common',
+            is_default BOOLEAN DEFAULT 0,
+            enabled BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `;
+
+    // Таблица купленных разделителей пользователями
+    const createUserSeparatorsTable = `
+        CREATE TABLE IF NOT EXISTS user_separators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            separator_id INTEGER NOT NULL,
+            purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, separator_id),
+            FOREIGN KEY (separator_id) REFERENCES separator_shop_items(id) ON DELETE CASCADE
+        )
+    `;
+
+    // Таблица кастомных эмодзи для персонажей
+    const createCustomEmojisTable = `
+        CREATE TABLE IF NOT EXISTS character_custom_emojis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL UNIQUE,
+            emoji_url TEXT NOT NULL,
+            emoji_name TEXT,
+            discord_emoji_id TEXT,
+            discord_emoji_identifier TEXT,
+            animated BOOLEAN DEFAULT 0,
+            original_url TEXT,
+            purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+        )
+    `;
+
+    // Таблица активных разделителей для персонажей
+    const createActiveSepatorsTable = `
+        CREATE TABLE IF NOT EXISTS character_active_separator (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id INTEGER NOT NULL UNIQUE,
+            separator_id INTEGER,
+            is_custom BOOLEAN DEFAULT 0,
+            custom_separator1_url TEXT,
+            custom_separator2_url TEXT,
+            recolorable BOOLEAN DEFAULT 1,
+            alternate BOOLEAN DEFAULT 1,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+            FOREIGN KEY (separator_id) REFERENCES separator_shop_items(id) ON DELETE SET NULL
+        )
+    `;
+
+    this.db.serialize(() => {
+        this.db.run(createSeparatorItemsTable, (err) => {
+            if (err) console.error('❌ Ошибка создания separator_shop_items:', err);
+            else console.log('✅ Таблица separator_shop_items создана');
+        });
+
+        this.db.run(createUserSeparatorsTable, (err) => {
+            if (err) console.error('❌ Ошибка создания user_separators:', err);
+            else console.log('✅ Таблица user_separators создана');
+        });
+
+        this.db.run(createCustomEmojisTable, (err) => {
+            if (err) {
+                console.error('❌ Ошибка создания character_custom_emojis:', err);
+            } else {
+                console.log('✅ Таблица character_custom_emojis создана');
+                // Добавляем новые колонки если таблица уже существует
+                this.migrateCustomEmojisTable();
+            }
+        });
+
+        this.db.run(createActiveSepatorsTable, (err) => {
+            if (err) console.error('❌ Ошибка создания character_active_separator:', err);
+            else {
+                console.log('✅ Таблица character_active_separator создана');
+                this.seedDefaultSeparators();
+            }
+        });
+    });
+}
+
+// Миграция таблицы character_custom_emojis для добавления новых колонок
+migrateCustomEmojisTable() {
+    const alterQueries = [
+        'ALTER TABLE character_custom_emojis ADD COLUMN discord_emoji_id TEXT',
+        'ALTER TABLE character_custom_emojis ADD COLUMN discord_emoji_identifier TEXT',
+        'ALTER TABLE character_custom_emojis ADD COLUMN animated BOOLEAN DEFAULT 0',
+        'ALTER TABLE character_custom_emojis ADD COLUMN original_url TEXT'
+    ];
+
+    alterQueries.forEach(query => {
+        this.db.run(query, (err) => {
+            // Игнорируем ошибку если колонка уже существует
+            if (err && !err.message.includes('duplicate column name')) {
+                console.error('❌ Ошибка миграции character_custom_emojis:', err);
+            }
+        });
+    });
+    
+    console.log('✅ Миграция character_custom_emojis выполнена');
+}
+
+// Заполнение стандартными разделителями
+seedDefaultSeparators() {
+    const defaultSeparators = [
+        {
+            name: 'Ruby Classic',
+            description: 'Классический рубиновый разделитель',
+            preview_url: 'https://i.imgur.com/ruby_classic.png',
+            separator1_url: './images/rubycon.png',
+            separator2_url: './images/rubycon1.png',
+            price: 0,
+            category: 'Стандартные',
+            rarity: 'common',
+            is_default: 1
+        },
+        {
+            name: 'Золотая линия',
+            description: 'Элегантный золотой разделитель',
+            preview_url: 'https://i.imgur.com/gold_line.png',
+            separator1_url: 'https://i.imgur.com/gold_sep1.png',
+            separator2_url: 'https://i.imgur.com/gold_sep2.png',
+            price: 50,
+            category: 'Премиум',
+            rarity: 'rare'
+        },
+        {
+            name: 'Неоновый блеск',
+            description: 'Яркий неоновый разделитель',
+            preview_url: 'https://i.imgur.com/neon_glow.png',
+            separator1_url: 'https://i.imgur.com/neon_sep1.png',
+            separator2_url: 'https://i.imgur.com/neon_sep2.png',
+            price: 75,
+            category: 'Премиум',
+            rarity: 'rare'
+        },
+        {
+            name: 'Космическая пыль',
+            description: 'Разделитель с эффектом космоса',
+            preview_url: 'https://i.imgur.com/cosmic.png',
+            separator1_url: 'https://i.imgur.com/cosmic_sep1.png',
+            separator2_url: 'https://i.imgur.com/cosmic_sep2.png',
+            price: 100,
+            category: 'Эпические',
+            rarity: 'epic'
+        },
+        {
+            name: 'Драконье пламя',
+            description: 'Огненный разделитель с драконьим мотивом',
+            preview_url: 'https://i.imgur.com/dragon.png',
+            separator1_url: 'https://i.imgur.com/dragon_sep1.png',
+            separator2_url: 'https://i.imgur.com/dragon_sep2.png',
+            price: 150,
+            category: 'Легендарные',
+            rarity: 'legendary'
+        }
+    ];
+
+    const checkQuery = 'SELECT COUNT(*) as count FROM separator_shop_items';
+    this.db.get(checkQuery, [], (err, row) => {
+        if (err || (row && row.count > 0)) return;
+
+        const insertQuery = `
+            INSERT INTO separator_shop_items 
+            (name, description, preview_url, separator1_url, separator2_url, price, category, rarity, is_default)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        defaultSeparators.forEach(sep => {
+            this.db.run(insertQuery, [
+                sep.name, sep.description, sep.preview_url,
+                sep.separator1_url, sep.separator2_url,
+                sep.price, sep.category, sep.rarity, sep.is_default || 0
+            ]);
+        });
+        console.log('✅ Стандартные разделители добавлены в магазин');
+    });
+}
+
+// Получить все разделители из магазина
+getAllSeparatorItems() {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM separator_shop_items WHERE enabled = 1 ORDER BY price ASC';
+        this.db.all(query, [], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+}
+
+// Получить разделитель по ID
+getSeparatorById(separatorId) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM separator_shop_items WHERE id = ?';
+        this.db.get(query, [separatorId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+}
+
+// Проверить, куплен ли разделитель пользователем
+hasUserSeparator(userId, separatorId) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM user_separators WHERE user_id = ? AND separator_id = ?';
+        this.db.get(query, [userId, separatorId], (err, row) => {
+            if (err) reject(err);
+            else resolve(!!row);
+        });
+    });
+}
+
+// Получить все купленные разделители пользователя
+getUserSeparators(userId) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            SELECT s.*, us.purchased_at 
+            FROM separator_shop_items s
+            JOIN user_separators us ON s.id = us.separator_id
+            WHERE us.user_id = ?
+            ORDER BY us.purchased_at DESC
+        `;
+        this.db.all(query, [userId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+}
+
+// Купить разделитель
+purchaseSeparator(userId, separatorId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const separator = await this.getSeparatorById(separatorId);
+            if (!separator) return reject(new Error('Разделитель не найден'));
+
+            const alreadyOwned = await this.hasUserSeparator(userId, separatorId);
+            if (alreadyOwned) return reject(new Error('Разделитель уже куплен'));
+
+            const userBalance = await this.getUserRubyCoins(userId);
+            if (userBalance < separator.price) return reject(new Error('Недостаточно RubyCoins'));
+
+            // Списываем деньги
+            await this.removeRubyCoins(userId, separator.price);
+
+            // Добавляем разделитель пользователю
+            const insertQuery = 'INSERT INTO user_separators (user_id, separator_id) VALUES (?, ?)';
+            this.db.run(insertQuery, [userId, separatorId], function(err) {
+                if (err) reject(err);
+                else resolve({ separator, spent: separator.price });
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Установить активный разделитель для персонажа
+setCharacterActiveSeparator(characterId, separatorId, isCustom = false, customUrls = null, options = {}) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            INSERT INTO character_active_separator 
+            (character_id, separator_id, is_custom, custom_separator1_url, custom_separator2_url, recolorable, alternate)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(character_id) DO UPDATE SET
+                separator_id = ?,
+                is_custom = ?,
+                custom_separator1_url = ?,
+                custom_separator2_url = ?,
+                recolorable = ?,
+                alternate = ?,
+                updated_at = CURRENT_TIMESTAMP
+        `;
+        
+        const sep1 = customUrls?.separator1 || null;
+        const sep2 = customUrls?.separator2 || null;
+        const recolorable = options.recolorable !== false ? 1 : 0;
+        const alternate = options.alternate !== false && sep2 ? 1 : 0;
+        
+        this.db.run(query, [
+            characterId, separatorId, isCustom ? 1 : 0, sep1, sep2, recolorable, alternate,
+            separatorId, isCustom ? 1 : 0, sep1, sep2, recolorable, alternate
+        ], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+// Получить активный разделитель персонажа
+getCharacterActiveSeparator(characterId) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            SELECT cas.*, ssi.name, ssi.separator1_url as shop_sep1, ssi.separator2_url as shop_sep2
+            FROM character_active_separator cas
+            LEFT JOIN separator_shop_items ssi ON cas.separator_id = ssi.id
+            WHERE cas.character_id = ?
+        `;
+        this.db.get(query, [characterId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row || null);
+        });
+    });
+}
+
+// Добавить кастомное эмодзи для персонажа
+setCharacterCustomEmoji(characterId, emojiUrl, emojiName = null, extraData = {}) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            INSERT INTO character_custom_emojis (
+                character_id, 
+                emoji_url, 
+                emoji_name,
+                discord_emoji_id,
+                discord_emoji_identifier,
+                animated,
+                original_url
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(character_id) DO UPDATE SET
+                emoji_url = ?,
+                emoji_name = ?,
+                discord_emoji_id = ?,
+                discord_emoji_identifier = ?,
+                animated = ?,
+                original_url = ?,
+                purchased_at = CURRENT_TIMESTAMP
+        `;
+        
+        const discordEmojiId = extraData.discord_emoji_id || null;
+        const discordEmojiIdentifier = extraData.discord_emoji_identifier || null;
+        const animated = extraData.animated || 0;
+        const originalUrl = extraData.original_url || null;
+        
+        this.db.run(query, [
+            characterId, 
+            emojiUrl, 
+            emojiName,
+            discordEmojiId,
+            discordEmojiIdentifier,
+            animated,
+            originalUrl,
+            // UPDATE части
+            emojiUrl, 
+            emojiName,
+            discordEmojiId,
+            discordEmojiIdentifier,
+            animated,
+            originalUrl
+        ], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+// Получить кастомное эмодзи персонажа
+getCharacterCustomEmoji(characterId) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM character_custom_emojis WHERE character_id = ?';
+        this.db.get(query, [characterId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row || null);
+        });
+    });
+}
+
+// Удалить кастомное эмодзи персонажа
+deleteCharacterCustomEmoji(characterId) {
+    return new Promise((resolve, reject) => {
+        const query = 'DELETE FROM character_custom_emojis WHERE character_id = ?';
+        this.db.run(query, [characterId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+// Добавить новый разделитель в магазин (для админов)
+addSeparatorToShop(separatorData) {
+    return new Promise((resolve, reject) => {
+        const query = `
+            INSERT INTO separator_shop_items 
+            (name, description, preview_url, separator1_url, separator2_url, price, category, rarity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        this.db.run(query, [
+            separatorData.name,
+            separatorData.description || '',
+            separatorData.preview_url,
+            separatorData.separator1_url,
+            separatorData.separator2_url || null,
+            separatorData.price || 0,
+            separatorData.category || 'Стандартные',
+            separatorData.rarity || 'common'
+        ], function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+        });
+    });
+}
+
+// ===============================
+// СИСТЕМА ЭМОДЗИ ПОЛЬЗОВАТЕЛЕЙ
+// ===============================
+
+// Инициализация таблицы эмодзи пользователей
+initUserEmojisTable() {
+    const createTable = `
+        CREATE TABLE IF NOT EXISTS user_emojis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            emoji_id TEXT,
+            name TEXT NOT NULL,
+            image_url TEXT NOT NULL,
+            discord_emoji_id TEXT,
+            rarity TEXT DEFAULT 'common',
+            category TEXT,
+            purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, name)
+        )
+    `;
+    this.db.run(createTable, (err) => {
+        if (err) console.error('❌ Ошибка создания user_emojis:', err);
+        else console.log('✅ Таблица user_emojis создана');
+    });
+}
+
+// Получить все эмодзи пользователя
+getUserEmojis(userId) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT * FROM user_emojis WHERE user_id = ? ORDER BY purchased_at DESC';
+        this.db.all(query, [userId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+}
+
+// Добавить эмодзи пользователю из конфига
+addUserEmojiFromConfig(userId, emojiData, client = null, discordEmojiData = null) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Проверяем, есть ли уже такое эмодзи
+            const existing = await this.getUserEmojis(userId);
+            if (existing.some(e => e.name === emojiData.name)) {
+                return reject(new Error('Эмодзи уже куплено'));
+            }
+
+            let discordEmojiId = null;
+            let discordIdentifier = null;
+
+            // Если переданы Discord данные из uploadEmojiToGuild - используем их
+            if (discordEmojiData && discordEmojiData.id) {
+                discordEmojiId = discordEmojiData.id;
+                discordIdentifier = discordEmojiData.identifier;
+                console.log(`✅ Используются предзагруженные Discord данные: ${discordIdentifier}`);
+            }
+            // Иначе пытаемся загрузить эмодзи в Discord (старая логика для обратной совместимости)
+            else if (client && emojiData.image_url) {
+                try {
+                    const guild = client.guilds.cache.first();
+                    if (guild) {
+                        const emoji = await guild.emojis.create({
+                            attachment: emojiData.image_url,
+                            name: emojiData.id.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 32)
+                        });
+                        discordEmojiId = emoji.id;
+                        discordIdentifier = emoji.identifier;
+                        console.log(`✅ Эмодзи ${emojiData.name} загружено в Discord: ${emoji.id}`);
+                    }
+                } catch (emojiError) {
+                    console.error('⚠️ Не удалось загрузить эмодзи в Discord:', emojiError.message);
+                }
+            }
+
+            const query = `
+                INSERT INTO user_emojis (user_id, emoji_id, name, image_url, discord_emoji_id, rarity, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `;
+            this.db.run(query, [
+                userId,
+                emojiData.id,
+                emojiData.name,
+                emojiData.image_url,
+                discordEmojiId,
+                emojiData.rarity || 'common',
+                emojiData.category || null
+            ], function(err) {
+                if (err) reject(err);
+                else resolve(this.lastID);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Добавить разделитель пользователю из конфига
+addUserSeparatorFromConfig(userId, separatorData) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Проверяем, есть ли уже в БД
+            let separator = await this.getSeparatorByConfigId(separatorData.id);
+            
+            // Если нет - добавляем в магазин
+            if (!separator) {
+                const insertQuery = `
+                    INSERT INTO separator_shop_items 
+                    (name, description, preview_url, separator1_url, separator2_url, price, category, rarity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `;
+                await new Promise((res, rej) => {
+                    this.db.run(insertQuery, [
+                        separatorData.name,
+                        separatorData.description || '',
+                        separatorData.preview_urls?.[0] || '',
+                        separatorData.separator1_url,
+                        separatorData.separator2_url || null,
+                        separatorData.price || 0,
+                        separatorData.category || 'Стандартные',
+                        separatorData.rarity || 'common'
+                    ], function(err) {
+                        if (err) rej(err);
+                        else res(this.lastID);
+                    });
+                });
+                separator = await this.getSeparatorByConfigId(separatorData.id);
+            }
+
+            if (!separator) {
+                // Получаем последний добавленный
+                separator = await new Promise((res, rej) => {
+                    this.db.get('SELECT * FROM separator_shop_items ORDER BY id DESC LIMIT 1', [], (err, row) => {
+                        if (err) rej(err);
+                        else res(row);
+                    });
+                });
+            }
+
+            if (!separator) {
+                return reject(new Error('Не удалось добавить разделитель'));
+            }
+
+            // Добавляем пользователю
+            const userQuery = 'INSERT OR IGNORE INTO user_separators (user_id, separator_id) VALUES (?, ?)';
+            this.db.run(userQuery, [userId, separator.id], function(err) {
+                if (err) reject(err);
+                else resolve(separator.id);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Получить разделитель по ID из конфига
+getSeparatorByConfigId(configId) {
+    return new Promise((resolve, reject) => {
+        // Ищем по имени, так как config ID не хранится
+        const query = 'SELECT * FROM separator_shop_items WHERE name = ? LIMIT 1';
+        this.db.get(query, [configId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+}
+
+// Удалить эмодзи пользователя
+deleteUserEmoji(userId, emojiId) {
+    return new Promise((resolve, reject) => {
+        const query = 'DELETE FROM user_emojis WHERE user_id = ? AND id = ?';
+        this.db.run(query, [userId, emojiId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+// === ГАЛЕРЕЯ ПЕРСОНАЖА ===
+
+// Создать таблицу галереи
+createCharacterGalleryTable() {
+    return new Promise((resolve, reject) => {
+        // Сначала проверяем есть ли колонка image_url
+        this.db.all("PRAGMA table_info(character_gallery)", (err, columns) => {
+            if (err) {
+                // Таблицы нет - создаём
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS character_gallery (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        character_id INTEGER NOT NULL,
+                        image_url TEXT NOT NULL,
+                        description TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                    )
+                `, (createErr) => {
+                    if (createErr) reject(createErr);
+                    else resolve();
+                });
+                return;
+            }
+
+            // Проверяем есть ли колонка image_url
+            const hasImageUrl = columns && columns.some(col => col.name === 'image_url');
+            
+            if (!hasImageUrl && columns && columns.length > 0) {
+                // Таблица существует но без image_url - пересоздаём
+                console.log('⚠️ Пересоздаём таблицу character_gallery с правильной схемой...');
+                this.db.run('DROP TABLE IF EXISTS character_gallery', (dropErr) => {
+                    if (dropErr) {
+                        console.error('Ошибка удаления таблицы:', dropErr);
+                        return reject(dropErr);
+                    }
+                    this.db.run(`
+                        CREATE TABLE character_gallery (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            character_id INTEGER NOT NULL,
+                            image_url TEXT NOT NULL,
+                            description TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                        )
+                    `, (createErr) => {
+                        if (createErr) reject(createErr);
+                        else {
+                            console.log('✅ Таблица character_gallery пересоздана');
+                            resolve();
+                        }
+                    });
+                });
+            } else {
+                // Всё ок или таблицы нет
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS character_gallery (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        character_id INTEGER NOT NULL,
+                        image_url TEXT NOT NULL,
+                        description TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                    )
+                `, (createErr) => {
+                    if (createErr) reject(createErr);
+                    else resolve();
+                });
+            }
+        });
+    });
+}
+
+// Получить галерею персонажа
+getCharacterGallery(characterId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Сначала убедимся что таблица существует
+            await this.createCharacterGalleryTable();
+            
+            const query = 'SELECT * FROM character_gallery WHERE character_id = ? ORDER BY created_at DESC';
+            this.db.all(query, [characterId], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Добавить изображение в галерею
+addToCharacterGallery(characterId, imageUrl, description = null) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Убеждаемся, что таблица существует
+            await this.createCharacterGalleryTable();
+            
+            // Проверяем лимит (макс 5 изображений)
+            const gallery = await this.getCharacterGallery(characterId);
+            if (gallery.length >= 5) {
+                return reject(new Error('Достигнут лимит галереи (максимум 5 изображений)'));
+            }
+
+            const query = 'INSERT INTO character_gallery (character_id, image_url, description) VALUES (?, ?, ?)';
+            this.db.run(query, [characterId, imageUrl, description], function(err) {
+                if (err) reject(err);
+                else resolve({ id: this.lastID, characterId, imageUrl, description });
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Удалить изображение из галереи
+removeFromCharacterGallery(imageId) {
+    return new Promise((resolve, reject) => {
+        const query = 'DELETE FROM character_gallery WHERE id = ?';
+        this.db.run(query, [imageId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes > 0);
+        });
+    });
+}
+
+// Обновить описание изображения в галерее
+updateGalleryImage(imageId, description) {
+    return new Promise((resolve, reject) => {
+        const query = 'UPDATE character_gallery SET description = ? WHERE id = ?';
+        this.db.run(query, [description, imageId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes > 0);
+        });
+    });
+}
+
+// === ДОСТИЖЕНИЯ ПЕРСОНАЖА ===
+
+// Создать таблицу достижений
+createAchievementsTable() {
+    return new Promise((resolve, reject) => {
+        const query = `
+            CREATE TABLE IF NOT EXISTS character_achievements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                icon TEXT DEFAULT '🏆',
+                rarity TEXT DEFAULT 'common',
+                awarded_by TEXT,
+                awarded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+            )
+        `;
+        this.db.run(query, (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+}
+
+// Получить достижения персонажа
+getCharacterAchievements(characterId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await this.createAchievementsTable();
+            const query = 'SELECT * FROM character_achievements WHERE character_id = ? ORDER BY awarded_at DESC';
+            this.db.all(query, [characterId], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Добавить достижение персонажу
+addCharacterAchievement(characterId, title, description, icon, rarity, awardedBy) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await this.createAchievementsTable();
+            const query = 'INSERT INTO character_achievements (character_id, title, description, icon, rarity, awarded_by) VALUES (?, ?, ?, ?, ?, ?)';
+            this.db.run(query, [characterId, title, description, icon || '🏆', rarity || 'common', awardedBy], function(err) {
+                if (err) reject(err);
+                else resolve({ id: this.lastID, characterId, title, description, icon, rarity });
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Удалить достижение
+removeCharacterAchievement(achievementId) {
+    return new Promise((resolve, reject) => {
+        const query = 'DELETE FROM character_achievements WHERE id = ?';
+        this.db.run(query, [achievementId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes > 0);
+        });
+    });
+}
+
+// === СТАТИСТИКА СООБЩЕНИЙ ===
+
+// Получить количество сообщений персонажа
+getCharacterMessageCount(characterId) {
+    return new Promise((resolve, reject) => {
+        const query = 'SELECT COUNT(*) as count FROM message_log WHERE character_id = ?';
+        this.db.get(query, [characterId], (err, row) => {
+            if (err) {
+                // Если таблицы нет, возвращаем 0
+                if (err.message.includes('no such table')) {
+                    resolve(0);
+                } else {
+                    reject(err);
+                }
+            } else {
+                resolve(row ? row.count : 0);
+            }
+        });
+    });
+}
+
+// Создать таблицу для лога сообщений
+createMessageLogTable() {
+    return new Promise((resolve, reject) => {
+        const query = `
+            CREATE TABLE IF NOT EXISTS message_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL,
+                channel_id TEXT,
+                message_length INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+            )
+        `;
+        this.db.run(query, (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+}
+
+// Записать сообщение в лог
+logCharacterMessage(characterId, channelId, messageLength) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await this.createMessageLogTable();
+            const query = 'INSERT INTO message_log (character_id, channel_id, message_length) VALUES (?, ?, ?)';
+            this.db.run(query, [characterId, channelId, messageLength], function(err) {
+                if (err) reject(err);
+                else resolve(this.lastID);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Обновить биографию персонажа
+updateCharacterBio(characterId, data) {
+    return new Promise((resolve, reject) => {
+        const fields = [];
+        const values = [];
+        
+        if (data.biography !== undefined) {
+            fields.push('biography = ?');
+            values.push(data.biography);
+        }
+        if (data.backstory !== undefined) {
+            fields.push('backstory = ?');
+            values.push(data.backstory);
+        }
+        if (data.personality !== undefined) {
+            fields.push('personality = ?');
+            values.push(data.personality);
+        }
+        if (data.goals !== undefined) {
+            fields.push('goals = ?');
+            values.push(data.goals);
+        }
+
+        if (fields.length === 0) {
+            return resolve(false);
+        }
+
+        values.push(characterId);
+        const query = `UPDATE characters SET ${fields.join(', ')} WHERE id = ?`;
+        
+        this.db.run(query, values, function(err) {
+            if (err) reject(err);
+            else resolve(this.changes > 0);
+        });
+    });
+}
+
+// Добавить колонки биографии если их нет
+ensureBioColumns() {
+    return new Promise((resolve, reject) => {
+        const columns = ['biography', 'backstory', 'personality', 'goals'];
+        let completed = 0;
+        
+        columns.forEach(col => {
+            const query = `ALTER TABLE characters ADD COLUMN ${col} TEXT`;
+            this.db.run(query, (err) => {
+                // Игнорируем ошибку если колонка уже существует
+                completed++;
+                if (completed === columns.length) {
+                    resolve();
+                }
+            });
+        });
+    });
+}
+
+// Добавить колонку bounty (награда за голову)
+ensureBountyColumn() {
+    return new Promise((resolve, reject) => {
+        const query = `ALTER TABLE characters ADD COLUMN bounty INTEGER DEFAULT 0`;
+        this.db.run(query, (err) => {
+            // Игнорируем ошибку если колонка уже существует
+            resolve();
+        });
+    });
+}
+
+// Обновить награду за голову
+updateCharacterBounty(characterId, bounty) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await this.ensureBountyColumn();
+            const query = 'UPDATE characters SET bounty = ? WHERE id = ?';
+            this.db.run(query, [bounty, characterId], function(err) {
+                if (err) reject(err);
+                else resolve(this.changes > 0);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Получить награду за голову
+getCharacterBounty(characterId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await this.ensureBountyColumn();
+            const query = 'SELECT bounty FROM characters WHERE id = ?';
+            this.db.get(query, [characterId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row?.bounty || 0);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
 
 }
 

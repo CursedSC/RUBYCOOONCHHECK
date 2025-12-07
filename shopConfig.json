@@ -1,0 +1,229 @@
+{
+  "shopName": "Покупка оформления",
+  "accessRoleId": "1381909203005866034",
+  "itemsPerPage": 5,
+  
+  "rarityConfig": {
+    "common": {
+      "name": "Обычный",
+      "emoji": "⚪",
+      "color": "#9E9E9E",
+      "priceMultiplier": 1.0
+    },
+    "rare": {
+      "name": "Редкий",
+      "emoji": "🔵",
+      "color": "#2196F3",
+      "priceMultiplier": 1.5
+    },
+    "epic": {
+      "name": "Эпический",
+      "emoji": "🟣",
+      "color": "#9C27B0",
+      "priceMultiplier": 2.0
+    },
+    "legendary": {
+      "name": "Легендарный",
+      "emoji": "🟠",
+      "color": "#FF9800",
+      "priceMultiplier": 3.0
+    },
+    "mythic": {
+      "name": "Мифический",
+      "emoji": "🔴",
+      "color": "#F44336",
+      "priceMultiplier": 5.0
+    }
+  },
+
+  "basePrices": {
+    "separator": 50,
+    "emoji": 25,
+    "customEmoji": 100
+  },
+
+  "separators": [
+    {
+      "id": "ruby_classic",
+      "name": "Ruby Classic",
+      "description": "Классический рубиновый разделитель (меняет цвет под embed)",
+      "separator1_url": "./images/rubycon.png",
+      "separator2_url": "./images/rubycon1.png",
+      "category": "Стандартные",
+      "rarity": "common",
+      "price": 0,
+      "isDefault": true,
+      "recolorable": true,
+      "alternate": true
+    },
+    {
+      "id": "simple_line",
+      "name": "Простая линия",
+      "description": "Минималистичный разделитель (1 изображение, меняет цвет)",
+      "separator1_url": "./images/simple_line.png",
+      "separator2_url": null,
+      "category": "Стандартные",
+      "rarity": "common",
+      "price": 0,
+      "recolorable": true,
+      "alternate": false
+    },
+    {
+      "id": "golden_line",
+      "name": "Золотая линия",
+      "description": "Элегантный золотой разделитель (меняет цвет под embed)",
+      "separator1_url": "./images/gold_sep.png",
+      "separator2_url": "./images/gold_sep2.png",
+      "category": "Премиум",
+      "rarity": "rare",
+      "price": 10,
+      "recolorable": true,
+      "alternate": true
+    },
+    {
+      "id": "neon_glow",
+      "name": "Неоновый блеск",
+      "description": "Яркий неоновый разделитель (1 изображение, меняет цвет)",
+      "separator1_url": "./images/neon_sep.png",
+      "separator2_url": null,
+      "category": "Премиум",
+      "rarity": "rare",
+      "price": 12,
+      "recolorable": true,
+      "alternate": false
+    },
+    {
+      "id": "rainbow_wave",
+      "name": "Радужная волна",
+      "description": "Уникальный радужный разделитель (НЕ меняет цвет!)",
+      "separator1_url": "./images/rainbow_sep.png",
+      "separator2_url": "./images/rainbow_sep2.png",
+      "category": "Уникальные",
+      "rarity": "epic",
+      "price": 18,
+      "recolorable": false,
+      "alternate": true
+    },
+    {
+      "id": "cosmic_dust",
+      "name": "Космическая пыль",
+      "description": "Уникальный космический разделитель (НЕ меняет цвет!)",
+      "separator1_url": "./images/cosmic_sep.png",
+      "separator2_url": "./images/cosmic_sep2.png",
+      "category": "Уникальные",
+      "rarity": "epic",
+      "price": 15,
+      "recolorable": false,
+      "alternate": true
+    },
+    {
+      "id": "dragon_flame",
+      "name": "Драконье пламя",
+      "description": "Уникальный огненный разделитель (НЕ меняет цвет!)",
+      "separator1_url": "./images/dragon_sep.png",
+      "separator2_url": null,
+      "category": "Уникальные",
+      "rarity": "legendary",
+      "price": 22,
+      "recolorable": false,
+      "alternate": false
+    },
+    {
+      "id": "void_essence",
+      "name": "Эссенция пустоты",
+      "description": "Мистический разделитель из бездны (НЕ меняет цвет!)",
+      "separator1_url": "./images/void_sep.png",
+      "separator2_url": "./images/void_sep2.png",
+      "category": "Мифические",
+      "rarity": "mythic",
+      "price": 25,
+      "recolorable": false,
+      "alternate": true
+    }
+  ],
+
+  "emojis": [
+    {
+      "id": "crown",
+      "name": "Корона",
+      "description": "Золотая королевская корона",
+      "image_url": "https://i.imgur.com/crown_emoji.png",
+      "category": "Статусные",
+      "rarity": "rare",
+      "price": 15
+    },
+    {
+      "id": "fire",
+      "name": "Огонь",
+      "description": "Пылающее пламя",
+      "image_url": "https://i.imgur.com/fire_emoji.png",
+      "category": "Элементы",
+      "rarity": "common",
+      "price": 8
+    },
+    {
+      "id": "diamond",
+      "name": "Алмаз",
+      "description": "Сверкающий драгоценный камень",
+      "image_url": "https://i.imgur.com/diamond_emoji.png",
+      "category": "Драгоценности",
+      "rarity": "epic",
+      "price": 18
+    },
+    {
+      "id": "skull",
+      "name": "Череп",
+      "description": "Мрачный символ смерти",
+      "image_url": "https://i.imgur.com/skull_emoji.png",
+      "category": "Тёмные",
+      "rarity": "rare",
+      "price": 12
+    },
+    {
+      "id": "star",
+      "name": "Звезда",
+      "description": "Яркая сияющая звезда",
+      "image_url": "https://i.imgur.com/star_emoji.png",
+      "category": "Космос",
+      "rarity": "common",
+      "price": 6
+    },
+    {
+      "id": "dragon_head",
+      "name": "Голова дракона",
+      "description": "Величественный символ силы",
+      "image_url": "https://i.imgur.com/dragon_head_emoji.png",
+      "category": "Существа",
+      "rarity": "legendary",
+      "price": 22
+    },
+    {
+      "id": "phoenix",
+      "name": "Феникс",
+      "description": "Птица возрождения из пепла",
+      "image_url": "https://i.imgur.com/phoenix_emoji.png",
+      "category": "Существа",
+      "rarity": "mythic",
+      "price": 25
+    }
+  ],
+
+  "customEmojiSettings": {
+    "enabled": true,
+    "basePrice": 20,
+    "maxSize": 256,
+    "allowedFormats": ["png", "jpg", "jpeg", "gif", "webp"],
+    "emojiGuildId": "1351329714823762031",
+    "uploadToBot": true,
+    "emojiPrefix": "rb_"
+  },
+
+  "profileSettings": {
+    "enableGallery": true,
+    "enableBio": true,
+    "enableStats": true,
+    "enableAchievements": true,
+    "maxGalleryImages": 5,
+    "maxBioLength": 500
+  }
+}
