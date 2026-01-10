@@ -614,19 +614,50 @@ module.exports = {
         components: []
       };
 
-      // Формируем заголовок профиля с эмодзи
+      // ============ ЭМОДЗИ: ФОРМАТ И ОБНОВЛЕНИЕ НИКА ============
       let emojiPrefix = '';
       
       if (customEmoji && customEmoji.discord_emoji_id) {
-        // Discord эмодзи - показываем как настоящий эмодзи
-        emojiPrefix = customEmoji.animated 
-          ? `<a:${customEmoji.emoji_name || 'custom'}:${customEmoji.discord_emoji_id}> `
-          : `<:${customEmoji.emoji_name || 'custom'}:${customEmoji.discord_emoji_id}> `;
+        // Discord кастом-эмодзи в правильном формате
+        const isAnimated = !!customEmoji.animated;
+        emojiPrefix = `${isAnimated ? '<a' : '<'}:${customEmoji.emoji_name || 'custom'}:${customEmoji.discord_emoji_id}> `;
+      } else if (customEmoji && customEmoji.emoji_url) {
+        // Фолбэк на URL-эмодзи (как внешнее изображение)
+        emojiPrefix = '⭐ ';
       }
 
+      // Синхронизация ника с эмодзи (только при вызове /профиль)
+      if (customEmoji && interaction.guild) {
+        try {
+          const targetUserId = character.user_id || interaction.user.id;
+          const member = await interaction.guild.members.fetch(targetUserId);
+
+          // Убираем старый эмодзи-префикс из ника
+          const emojiRegex = /^<a?:\w+:\d+>\s*/;
+          const currentBase =
+            member.nickname ||
+            character.nickname ||
+            character.name ||
+            member.user.username;
+
+          const cleanBase = currentBase.replace(emojiRegex, '').trim();
+          const newNick = `${emojiPrefix}${cleanBase}`.substring(0, 32); // ограничение Discord
+
+          if (member.manageable && newNick !== member.nickname) {
+            await member.setNickname(newNick, 'Синхронизация эмодзи профиля');
+            console.log(`✅ Ник обновлён для ${member.user.username}: ${newNick}`);
+          }
+        } catch (err) {
+          console.error('Ошибка обновления ника с эмодзи:', err);
+        }
+      }
+
+      // ============ ВИЗУАЛ: COMPONENTS V2 ============
+      // Заголовок с эмодзи и именем
+      const displayName = `${emojiPrefix}${character.name}`;
       container.components.push({
         type: ComponentType.TextDisplay,
-        content: `# ${emojiPrefix}${character.name}`
+        content: `# ${displayName}`
       });
 
       if (character.nickname) {
@@ -646,6 +677,7 @@ module.exports = {
       const sep1 = addSeparator();
       if (sep1) container.components.push(sep1);
 
+      // Блок: Основная информация
       container.components.push({
         type: ComponentType.TextDisplay,
         content: '### 【 Основная информация 】'
@@ -659,56 +691,66 @@ module.exports = {
         ownerName = `ID ${character.user_id}`;
       }
 
+      const basicInfo = [];
+      if (character.race) basicInfo.push(`🦁 **Раса:** ${character.race}`);
+      if (character.age) basicInfo.push(`🎂 **Возраст:** ${character.age}`);
+      if (character.organization) basicInfo.push(`🏛️ **Организация:** ${character.organization}`);
+      if (character.position) basicInfo.push(`📜 **Должность:** ${character.position}`);
+      if (character.mention) basicInfo.push(`🧾 **Упоминание:** ${character.mention}`);
+      basicInfo.push(`👤 **Владелец:** ${ownerName}`);
+
       container.components.push({
         type: ComponentType.TextDisplay,
-        content:
-          `🦁 Раса: **${character.race || 'Не указано'}**\n` +
-          `🎂 Возраст: **${character.age || 'Не указано'}**\n` +
-          `🏛️ Организация: **${character.organization || 'Не указано'}**\n` +
-          `📜 Должность: **${character.position || 'Не указано'}**\n` +
-          `🧾 Упоминание: **${character.mention || 'Не указано'}**\n` +
-          `👤 Владелец: **${ownerName}**`
+        content: basicInfo.join('\n')
       });
 
       const sep2 = addSeparator();
       if (sep2) container.components.push(sep2);
 
+      // Блок: Характеристики
       container.components.push({
         type: ComponentType.TextDisplay,
         content: `### 【 Характеристики 】⸺ 🔱 ${totalPower.toLocaleString()}`
       });
 
+      const stats = [
+        `💪 **Сила:** ${(character.strength || 0).toLocaleString()} ⸺ *${getStatLevel(character.strength || 0, 'strength')}*`,
+        `🤸 **Ловкость:** ${(character.agility || 0).toLocaleString()} ⸺ *${getStatLevel(character.agility || 0, 'agility')}*`,
+        `⚡️ **Реакция:** ${(character.reaction || 0).toLocaleString()} ⸺ *${getStatLevel(character.reaction || 0, 'reaction')}*`,
+        `🎯 **Точность:** ${(character.accuracy || 0).toLocaleString()} ⸺ *${getStatLevel(character.accuracy || 0, 'accuracy')}*`,
+        `🏋️ **Стойкость:** ${(character.endurance || 0).toLocaleString()} ⸺ *${getStatLevel(character.endurance || 0, 'endurance')}*`,
+        `🛡️ **Прочность:** ${(character.durability || 0).toLocaleString()} ⸺ *${getStatLevel(character.durability || 0, 'durability')}*`,
+        `🔮 **Магия:** ${(character.magic || 0).toLocaleString()} ⸺ *${getStatLevel(character.magic || 0, 'magic')}*`
+      ];
+
       container.components.push({
         type: ComponentType.TextDisplay,
-        content:
-          `💪 Сила: **${(character.strength || 0).toLocaleString()}** ⸺ *${getStatLevel(character.strength || 0, 'strength')}*\n` +
-          `🤸 Ловкость: **${(character.agility || 0).toLocaleString()}** ⸺ *${getStatLevel(character.agility || 0, 'agility')}*\n` +
-          `⚡️ Реакция: **${(character.reaction || 0).toLocaleString()}** ⸺ *${getStatLevel(character.reaction || 0, 'reaction')}*\n` +
-          `🎯 Точность: **${(character.accuracy || 0).toLocaleString()}** ⸺ *${getStatLevel(character.accuracy || 0, 'accuracy')}*\n` +
-          `🏋️ Стойкость: **${(character.endurance || 0).toLocaleString()}** ⸺ *${getStatLevel(character.endurance || 0, 'endurance')}*\n` +
-          `🛡️ Прочность: **${(character.durability || 0).toLocaleString()}** ⸺ *${getStatLevel(character.durability || 0, 'durability')}*\n` +
-          `🔮 Магия: **${(character.magic || 0).toLocaleString()}** ⸺ *${getStatLevel(character.magic || 0, 'magic')}*`
+        content: stats.join('\n')
       });
 
       const sep3 = addSeparator();
       if (sep3) container.components.push(sep3);
 
+      // Блок: Способности и навыки
       container.components.push({
         type: ComponentType.TextDisplay,
         content: '### 【 Способности и Навыки 】'
       });
 
+      const abilities = [
+        `🍎 **Дьявольский Плод:** ${character.devilfruit || 'Нет'}`,
+        `👼 **Покровительство:** ${character.patronage || 'Нет'}`,
+        `💠 **Искры:** ${character.core || 'Нет'}`,
+        `🗡️ **Воля Вооружения:** ${character.hakivor || 'Нет'}`,
+        `👁️ **Воля Наблюдения:** ${character.hakinab || 'Нет'}`,
+        `👑 **Королевская Воля:** ${character.hakiconq || 'Нет'}`,
+        `🌪️ **Стихии:** ${character.elements || 'Нет'}`,
+        `🥋 **Боевые Искусства:** ${character.martialarts || 'Нет'}`
+      ];
+
       container.components.push({
         type: ComponentType.TextDisplay,
-        content:
-          `🍎 Дьявольский Плод: **${character.devilfruit || 'Нет'}**\n` +
-          `👼 Покровительство: **${character.patronage || 'Нет'}**\n` +
-          `💠 Искры: **${character.core || 'Нет'}**\n` +
-          `🗡️ Воля Вооружения: **${character.hakivor || 'Нет'}**\n` +
-          `👁️ Воля Наблюдения: **${character.hakinab || 'Нет'}**\n` +
-          `👑 Королевская Воля: **${character.hakiconq || 'Нет'}**\n` +
-          `🌪️ Стихии: **${character.elements || 'Нет'}**\n` +
-          `🥋 Боевые Искусства: **${character.martialarts || 'Нет'}**`
+        content: abilities.join('\n')
       });
 
       if (character.additional) {
@@ -736,13 +778,10 @@ module.exports = {
 
       let components = [container];
 
-      // === НАВИГАЦИЯ ПО ПРОФИЛЮ (стрелочки) ===
-      // Категории: профиль -> галерея -> достижения -> биография
-      // userId хранится для проверки кто может листать
-      
+      // ============ НАВИГАЦИЯ ПО ПРОФИЛЮ ============
       const isOwner = character.user_id === interaction.user.id;
       
-      // Навигационные кнопки для ВСЕХ пользователей
+      // Навигационные кнопки для всех
       const navRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`pnav_prev_0_${character.id}_${interaction.user.id}`)
@@ -760,7 +799,7 @@ module.exports = {
       );
       components.push(navRow);
 
-      // Кнопки действий для ВЛАДЕЛЬЦА персонажа
+      // Кнопки действий для владельца
       if (isOwner) {
         const ownerActionsRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -783,9 +822,8 @@ module.exports = {
         components.push(ownerActionsRow);
       }
 
-      // === АДМИНСКОЕ МЕНЮ (только для высших админов) ===
-        if (hasAdminRole) {
-        // Информация об оформлении
+      // ============ АДМИНСКОЕ МЕНЮ ============
+      if (hasAdminRole) {
         let sepDisplay = '📦 Стандартный';
         if (activeSeparator) {
           if (activeSeparator.is_custom) {
@@ -805,7 +843,6 @@ module.exports = {
           emojiDisplay = `🖼️ URL`;
         }
 
-        // Админский контейнер с информацией
         const stylingContainer = {
           type: ComponentType.Container,
           accent_color: parseInt('ED4245', 16),
@@ -816,7 +853,6 @@ module.exports = {
         };
         components.push(stylingContainer);
 
-        // SelectMenu для админских действий (магазин и прочее)
         const adminSelectRow = new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId(`profile_admin_${character.id}`)
@@ -847,8 +883,8 @@ module.exports = {
                 emoji: '⚔️'
               },
               {
-                label: '🏆 Выдать достижение',
-                description: 'Добавить достижение персонажу',
+                label: '🏆 Управление достижениями',
+                description: 'Добавить или удалить достижения',
                 value: 'achievement_add',
                 emoji: '🏆'
               },
@@ -865,7 +901,7 @@ module.exports = {
                 emoji: '📖'
               },
               {
-                label: '🎨 Магазин оформления',
+                label: '🛒 Магазин оформления',
                 description: 'Разделители, эмодзи и декорации',
                 value: 'shop',
                 emoji: '🛒'
@@ -880,7 +916,6 @@ module.exports = {
         );
         components.push(adminSelectRow);
 
-        // Кнопки быстрого доступа
         const adminRow1 = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`padm_info_${character.id}`)
@@ -892,7 +927,7 @@ module.exports = {
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
             .setCustomId(`padm_achieve_${character.id}`)
-            .setLabel('🏆 Достижение')
+            .setLabel('🏆 Достижения')
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
             .setCustomId(`padm_shop_${character.id}`)
